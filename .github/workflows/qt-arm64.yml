@@ -49,6 +49,15 @@ jobs:
           "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
           Write-Host "Visual Studio: $install"
 
+      - name: Install Qt build tools
+        shell: pwsh
+        run: |
+          $flex = Get-Command flex -ErrorAction SilentlyContinue
+          if (-not $flex) {
+            throw "flex is required by the Qt 5.15.19 ANGLE build but was not found on PATH"
+          }
+          Write-Host "flex: $($flex.Source)"
+
       - name: Download pinned Qt source
         shell: pwsh
         run: |
