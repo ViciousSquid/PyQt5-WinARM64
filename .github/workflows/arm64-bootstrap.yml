@@ -1,0 +1,60 @@
+name: ARM64 bootstrap
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  native-toolchain:
+    runs-on: windows-11-vs2026-arm
+    steps:
+      - name: Check runner architecture
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $proc = $env:PROCESSOR_ARCHITECTURE
+          if ($arch -ne "Arm64" -or $proc -ne "ARM64") {
+            throw "Expected native ARM64 Windows runner: RuntimeInformation=$arch PROCESSOR_ARCHITECTURE=$proc"
+          }
+          Get-ComputerInfo -Property WindowsProductName,WindowsVersion,OsArchitecture
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+
+      - name: Set up ARM64 CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.16"
+          architecture: arm64
+
+      - name: Verify ARM64 CPython
+        shell: pwsh
+        run: |
+          $python = (Get-Command python).Source
+          Write-Host "Python: $python"
+          python -c "import platform,struct,sys; print(platform.machine()); print(struct.calcsize('P') * 8); print(sys.executable)"
+          $arch = python -c "import platform; print(platform.machine())"
+          if ($arch -ne "ARM64") { throw "Python is not ARM64: $arch" }
+          if ([IntPtr]::Size -ne 8) { throw "Python pointer size is not 64-bit" }
+
+      - name: Locate ARM64 MSVC toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if (-not $install) { throw "No Visual Studio installation with the ARM64 MSVC toolchain was found" }
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found at $vsdevcmd" }
+          Write-Host "Visual Studio: $install"
+          Write-Host "Developer command file: $vsdevcmd"
+          cmd /c "`"$vsdevcmd`" -arch=arm64 && where cl && cl"
+
+      - name: Verify ARM64 compiler
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          $output = cmd /c "`"$vsdevcmd`" -arch=arm64 && cl 2>&1"
+          $output
+          if ($LASTEXITCODE -ne 0) { throw "ARM64 MSVC invocation failed" }
