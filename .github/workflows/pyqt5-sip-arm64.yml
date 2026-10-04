@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
 
 env:
-  PYQT5_SIP_VERSION: "12.19.0"
-  PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.19.0.tar.gz"
-  PYQT5_SIP_SHA256: "71cacf1879da2cd3e50cb239e21673cfe02d358af70ab6768817c960428868c3"
+  PYQT5_SIP_VERSION: "12.17.0"
+  PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.17.0.tar.gz"
+  PYQT5_SIP_SHA256: "682dadcdbd2239af9fdc0c0628e2776b820e128bec88b49b8d692fe682f90b4f"
   SIP_VERSION: "6.16.1"
 
 jobs:
