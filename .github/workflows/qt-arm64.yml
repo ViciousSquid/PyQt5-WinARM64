@@ -121,6 +121,7 @@ jobs:
           key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Build Qt base
+        if: steps.qt-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && nmake'
@@ -128,6 +129,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Qt build failed" }
 
       - name: Install Qt base
+        if: steps.qt-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && nmake install'
