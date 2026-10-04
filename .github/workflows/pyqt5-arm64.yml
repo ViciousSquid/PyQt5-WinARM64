@@ -121,7 +121,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_ARCHIVE --wheel-dir dist
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
+          $wheel = Get-ChildItem dist -Filter "PyQt5_WinARM64-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
           Write-Host "Built: $($wheel.Name)"
           if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
@@ -136,6 +136,23 @@ jobs:
           $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($bundled.Count -ne 1) { throw "Expected exactly one bundled PyQt5 wheel, found $($bundled.Count)" }
           Write-Host "Bundled wheel: $($bundled.Name)"
+
+      - name: Retag wheels for PyPI
+        shell: pwsh
+        run: |
+          $pyqtWheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
+          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip_WinARM64-*.whl"
+          python tools/retag_wheel.py $pyqtWheel.FullName --old-name PyQt5 --new-name PyQt5-WinARM64 --replace-requires PyQt5-sip PyQt5-sip-WinARM64
+          python tools/retag_wheel.py $sipWheel.FullName --old-name PyQt5-sip --new-name PyQt5-sip-WinARM64
+          Get-ChildItem dist -Filter "*.whl"
+          Get-ChildItem wheelhouse -Filter "*.whl"
+
+      - name: Verify wheel metadata
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade wheel
+          python -c "import zipfile,glob; p=glob.glob('dist/*.whl')[0]; z=zipfile.ZipFile(p); m=z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); assert 'Name: PyQt5-WinARM64' in m; assert 'PyQt5-sip-WinARM64' in m; print(m)"
+          python -c "import zipfile,glob; p=glob.glob('wheelhouse/*.whl')[0]; z=zipfile.ZipFile(p); m=z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); assert 'Name: PyQt5-sip-WinARM64' in m; print(m)"
 
       - name: Verify wheel contents are ARM64
         shell: pwsh
