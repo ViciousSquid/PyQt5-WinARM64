@@ -151,33 +151,27 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          # PyQt5 5.15.11 only assigns WS_WIN to QtCore. SIP 6.9 also builds
-          # pylupdate/pyrcc as separate internal bindings, so propagate the
-          # platform tag to those bindings before PEP 517 generation.
+          # PyQt5 5.15.11 hard-codes the Windows platform tag from py_platform.
+          # Native ARM64 Python still reports win32 to PyQt, so preserve that
+          # tag explicitly for SIP's Q_PID typedef selection.
           $source = Join-Path $env:RUNNER_TEMP "PyQt5-src"
           Remove-Item $source -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $source | Out-Null
           tar -xzf $env:PYQT5_ARCHIVE -C $source --strip-components=1
           $project = Join-Path $source "project.py"
           $text = Get-Content $project -Raw
-          $text = $text.Replace(
-            "            super().__init__(project, 'pylupdate', qmake_QT=['xml', '-gui'],`n                    internal=True)",
-            "            super().__init__(project, 'pylupdate', qmake_QT=['xml', '-gui'],`n                    internal=True)`n`n            if project.py_platform.startswith('win32'):`n                self.tags.append('WS_WIN')"
-          )
-          $text = $text.Replace(
-            "            super().__init__(project, 'pyrcc', qmake_QT=['xml', '-gui'],`n                    internal=True)",
-            "            super().__init__(project, 'pyrcc', qmake_QT=['xml', '-gui'],`n                    internal=True)`n`n            if project.py_platform.startswith('win32'):`n                self.tags.append('WS_WIN')"
-          )
+          $needle = "self.bindings['QtCore'].tags.append(plattag)"
+          if (-not $text.Contains($needle)) { throw "PyQt5 project.py platform-tag hook not found" }
+          $text = $text.Replace($needle, "self.bindings['QtCore'].tags.append('WS_WIN')")
           Set-Content $project $text -Encoding utf8
+          if (-not (Get-Content $project -Raw).Contains("self.bindings['QtCore'].tags.append('WS_WIN')")) { throw "Failed to patch QtCore SIP platform tag" }
           python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= $source --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
           Write-Host "Built: $($wheel.Name)"
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel in dist, found $($wheel.Count)" }
           if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
-            throw "Unexpected PyQt5 wheel tag: $($wheel.Name)"
+          throw "Unexpected PyQt5 wheel tag: $($wheel.Name)"
           }
 
       - name: Bundle native Qt into PyQt5 wheel
