@@ -7,6 +7,7 @@ import argparse
 import base64
 import csv
 import hashlib
+import io
 import re
 import tempfile
 import zipfile
@@ -72,7 +73,7 @@ def rewrite_wheel(path: Path, old_name: str, new_name: str, requirements: list[t
     rewritten: list[tuple[str, bytes, zipfile.ZipInfo]] = []
     for info, data in entries:
         name = info.filename
-        if name == "RECORD":
+        if name.endswith(".dist-info/RECORD"):
             continue
         if name.startswith(old_dist_info + "/"):
             name = new_dist_info + name[len(old_dist_info) :]
@@ -86,13 +87,9 @@ def rewrite_wheel(path: Path, old_name: str, new_name: str, requirements: list[t
         record_rows.append([name, digest(data), str(len(data))])
     record_rows.append([record_name, "", ""])
 
-    record_text = "".join(
-        csv.writer(
-            output := __import__("io").StringIO(),
-            lineterminator="\n",
-        ).writerows(record_rows)
-        or output.getvalue()
-    ).encode("utf-8")
+    output = io.StringIO()
+    csv.writer(output, lineterminator="\n").writerows(record_rows)
+    record_text = output.getvalue().encode("utf-8")
     rewritten.append((record_name, record_text, zipfile.ZipInfo(record_name)))
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".whl", dir=path.parent) as temp:
