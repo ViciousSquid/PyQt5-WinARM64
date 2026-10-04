@@ -171,21 +171,11 @@ jobs:
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
           if (([regex]::Matches($text, "tags=\['WS_WIN'\]")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
           Set-Content $project $text -Encoding utf8
-          Push-Location $source
-          try {
-            python -m sipbuild.tools.build --verbose --confirm-license --build-dir "$env:RUNNER_TEMP\\pyqt5-build" --no-make
-            if ($LASTEXITCODE -ne 0) { throw "PyQt5 binding generation failed" }
-          }
-          finally {
-            Pop-Location
-          }
-          $qmake = "C:\\Qt\\$env:QT_VERSION\\arm64\\bin\\qmake.exe"
-          $build = Join-Path $env:RUNNER_TEMP "pyqt5-build"
-          $pro = Join-Path $build "PyQt5.pro"
-          if (-not (Test-Path $pro)) { throw "Generated PyQt5.pro not found: $pro" }
-          & $qmake -recursive $pro 2>&1 | Tee-Object -FilePath (Join-Path $build "qmake.log")
-          if ($LASTEXITCODE -ne 0) { Get-Content (Join-Path $build "qmake.log"); throw "Generated PyQt5.pro qmake failed" }
-          Write-Host "PyQt5 qmake generation succeeded."
+          # PyQt-builder invokes qmake and nmake during the PEP 517 build.
+          # VsDevCmd must be in the same process environment as that build;
+          # invoking it in a previous cmd.exe does not persist the MSVC variables.
+          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + (Get-Location).Path + '" && python -m pip wheel --no-deps --no-build-isolation "' + $source + '" --wheel-dir dist'
+          cmd /c $command
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
