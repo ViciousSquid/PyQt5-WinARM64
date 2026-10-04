@@ -161,82 +161,20 @@ jobs:
           $qconfig = Get-ChildItem $qtRoot -Filter "qconfig.h" -Recurse -File | Select-Object -First 1
           if (-not $qconfig) { throw "Qt qconfig.h not found under $qtRoot" }
           $text = Get-Content $qconfig.FullName -Raw
-          if ($text -notmatch '(?m)^#define QT_FEATURE_process 1\\s*        shell: pwsh
-        run: |
-          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
-          & "$qtBin\qmake.exe" -query
-          if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed to execute" }
-
-      - name: Verify Qt process feature
-        shell: pwsh
-        run: |
-          $probe = Join-Path $env:RUNNER_TEMP "qt-process-probe"
-          New-Item -ItemType Directory -Force -Path $probe | Out-Null
-          @'
-          QT += core
-          CONFIG += console
-          CONFIG -= app_bundle
-          SOURCES += main.cpp
-          '@ | Set-Content (Join-Path $probe "process.pro") -Encoding ascii
-          @'
-          #include <QCoreApplication>
-          #ifdef QT_NO_PROCESS
-          #error QT_NO_PROCESS is defined
-          #endif
-          #include <QProcess>
-          int main(int argc, char **argv)
-          {
-              QCoreApplication app(argc, argv);
-              QProcess process;
-              return process.state() == QProcess::NotRunning ? 0 : 1;
-          }
-          '@ | Set-Content (Join-Path $probe "main.cpp") -Encoding ascii
-          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $probe + '" && "' + "C:\Qt\$env:QT_VERSION\arm64\bin\qmake.exe" + '" process.pro && nmake'
-          cmd /c $command
-          if ($LASTEXITCODE -ne 0) { throw "Qt process feature probe failed" }
-          Write-Host "Qt process feature is enabled."
-) {
+          if ($text -notmatch '(?m)^#define QT_FEATURE_process 1\s*$') {
             throw "Qt process feature is not enabled in $($qconfig.FullName)"
           }
-          if ($text -match '(?m)^#define QT_NO_PROCESS\\s*        shell: pwsh
-        run: |
-          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
-          & "$qtBin\qmake.exe" -query
-          if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed to execute" }
-
-      - name: Verify Qt process feature
-        shell: pwsh
-        run: |
-          $probe = Join-Path $env:RUNNER_TEMP "qt-process-probe"
-          New-Item -ItemType Directory -Force -Path $probe | Out-Null
-          @'
-          QT += core
-          CONFIG += console
-          CONFIG -= app_bundle
-          SOURCES += main.cpp
-          '@ | Set-Content (Join-Path $probe "process.pro") -Encoding ascii
-          @'
-          #include <QCoreApplication>
-          #ifdef QT_NO_PROCESS
-          #error QT_NO_PROCESS is defined
-          #endif
-          #include <QProcess>
-          int main(int argc, char **argv)
-          {
-              QCoreApplication app(argc, argv);
-              QProcess process;
-              return process.state() == QProcess::NotRunning ? 0 : 1;
-          }
-          '@ | Set-Content (Join-Path $probe "main.cpp") -Encoding ascii
-          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $probe + '" && "' + "C:\Qt\$env:QT_VERSION\arm64\bin\qmake.exe" + '" process.pro && nmake'
-          cmd /c $command
-          if ($LASTEXITCODE -ne 0) { throw "Qt process feature probe failed" }
-          Write-Host "Qt process feature is enabled."
-) {
+          if ($text -match '(?m)^#define QT_NO_PROCESS\s*$') {
             throw "Qt qconfig still defines QT_NO_PROCESS in $($qconfig.FullName)"
           }
           Write-Host "Qt process feature verified in $($qconfig.FullName)."
 
+      - name: Verify Qt runtime
+        shell: pwsh
+        run: |
+          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
+          & "$qtBin\qmake.exe" -query
+          if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed to execute" }
       - name: Verify Qt runtime
         shell: pwsh
         run: |
