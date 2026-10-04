@@ -86,7 +86,7 @@ jobs:
           python -m pip install --no-deps $wheel.FullName
           $module = python -c "import PyQt5.sip, pathlib; print(pathlib.Path(PyQt5.sip.__file__))"
           if (-not $module.EndsWith(".pyd")) { throw "PyQt5.sip did not install a native extension: $module" }
-          $dump = cmd /c ('link /dump /headers "' + $module + '"')
+          $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 && link /dump /headers "' + $module + '"')
           if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for $module" }
           if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
             throw "PyQt5.sip is not an ARM64 PE image"
