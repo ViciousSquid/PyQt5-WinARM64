@@ -11,11 +11,11 @@ env:
   PYQT5_VERSION: "5.15.11"
   PYQT5_ARCHIVE: "PyQt5-5.15.11.tar.gz"
   PYQT5_SHA256: "fda45743ebb4a27b4b1a51c6d8ef455c4c1b5d610c90d2934c7802b5c1557c52"
-  PYQT5_SIP_VERSION: "12.17.0"
+  PYQT5_SIP_VERSION: "12.15.0"
   PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.17.0.tar.gz"
-  PYQT5_SIP_SHA256: "682dadcdbd2239af9fdc0c0628e2776b820e128bec88b49b8d692fe682f90b4f"
-  SIP_VERSION: "6.10.0"
-  PYQT_BUILDER_VERSION: "1.18.0"
+  PYQT5_SIP_SHA256: "d23fdfcf363b5cedd9d39f8a9c5710e7d52804f5b08a58e91c638b36eafcb702"
+  SIP_VERSION: "6.9.1"
+  PYQT_BUILDER_VERSION: "1.17.0"
   QT_VERSION: "5.15.19"
   QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
   QT_CONFIGURE_REV: "process-v2"
@@ -151,8 +151,7 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          # Use the PyQt5 PEP 517 build now that the SIP/PyQt-builder
-          # versions are aligned with PyQt5-sip 12.17.0.
+          # Build PyQt5 5.15.11 with the toolchain it was released against.
           $wheel = python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= --config-settings=--quiet= $env:PYQT5_ARCHIVE --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
