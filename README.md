@@ -2,6 +2,8 @@
 
 Native Windows ARM64 builds of PyQt5.
 
+> PyQt5-WinARM64 exists because upstream distributes PyQt5 for Windows x86/x64 but not native Windows ARM64, despite the underlying stack being capable of supporting it.
+
 This repository builds and validates PyQt5 against a native Windows ARM64 CPython and a native ARM64 Qt 5.15.x build.
 
 ## Build boundary
