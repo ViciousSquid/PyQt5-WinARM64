@@ -64,10 +64,12 @@ jobs:
         shell: pwsh
         run: |
           tar -xf $env:QT_ARCHIVE
-          $source = "qtbase-everywhere-opensource-src-$env:QT_VERSION"
-          if (-not (Test-Path "$source\configure.bat")) {
-            throw "Qt source does not contain configure.bat: $source"
+          $configure = @(Get-ChildItem -Path . -Filter "configure.bat" -Recurse -File)
+          if ($configure.Count -ne 1) {
+            throw "Expected exactly one Qt configure.bat after extraction, found $($configure.Count)"
           }
+          $source = $configure[0].Directory.FullName
+          Write-Host "Qt source: $source"
           "QT_SOURCE=$source" >> $env:GITHUB_ENV
 
       - name: Configure Qt for native ARM64
