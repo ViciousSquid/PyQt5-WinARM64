@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   native-toolchain:
@@ -49,12 +50,18 @@ jobs:
           Write-Host "Developer command file: $vsdevcmd"
           cmd /c "`"$vsdevcmd`" -arch=arm64 && where cl && cl"
 
-      - name: Verify ARM64 compiler
+      - name: Verify ARM64 compiler output
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
           $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
-          $output = cmd /c "`"$vsdevcmd`" -arch=arm64 && cl 2>&1"
-          $output
-          if ($LASTEXITCODE -ne 0) { throw "ARM64 MSVC invocation failed" }
+          @'
+          int main(void) { return 0; }
+          '@ | Set-Content -Encoding ascii hello.c
+          cmd /c "`"$vsdevcmd`" -arch=arm64 && cl /nologo /O2 hello.c /Fe:hello.exe && link /dump /headers hello.exe" > compiler.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content compiler.txt; throw "ARM64 MSVC compilation failed" }
+          Get-Content compiler.txt
+          if (-not (Select-String -Path compiler.txt -Pattern "AA64 machine (ARM64)")) {
+            throw "Compiler did not produce an ARM64 PE image"
+          }
