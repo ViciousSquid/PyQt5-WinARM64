@@ -121,7 +121,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_ARCHIVE --wheel-dir dist
-          $wheel = Get-ChildItem dist -Filter "PyQt5_WinARM64-*.whl"
+          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
           Write-Host "Built: $($wheel.Name)"
           if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
@@ -141,7 +141,7 @@ jobs:
         shell: pwsh
         run: |
           $pyqtWheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip_WinARM64-*.whl"
+          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip-*.whl"
           python tools/retag_wheel.py $pyqtWheel.FullName --old-name PyQt5 --new-name PyQt5-WinARM64 --replace-requires PyQt5-sip PyQt5-sip-WinARM64
           python tools/retag_wheel.py $sipWheel.FullName --old-name PyQt5-sip --new-name PyQt5-sip-WinARM64
           Get-ChildItem dist -Filter "*.whl"
@@ -175,8 +175,8 @@ jobs:
       - name: Clean ARM64 installation and QApplication smoke test
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip-*.whl"
+          $wheel = Get-ChildItem dist -Filter "PyQt5_WinARM64-*.whl"
+          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip_WinARM64-*.whl"
           python -m venv smoke-venv
           & ".\smoke-venv\Scripts\python.exe" -m pip install --upgrade pip
           & ".\smoke-venv\Scripts\python.exe" -m pip install --no-index --find-links (Resolve-Path dist) --find-links (Resolve-Path wheelhouse) $sipWheel.FullName $wheel.FullName
@@ -188,6 +188,6 @@ jobs:
         with:
           name: pyqt5-win-arm64
           path: |
-            dist/PyQt5-*.whl
-            wheelhouse/PyQt5_sip-*.whl
+            dist/PyQt5_WinARM64-*.whl
+            wheelhouse/PyQt5_sip_WinARM64-*.whl
           if-no-files-found: error
