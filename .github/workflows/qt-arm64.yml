@@ -119,7 +119,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\Qt\${{ env.QT_VERSION }}\arm64
-          key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.QT_CONFIGURE_REV }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.QT_CONFIGURE_REV }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
 
       - name: Build Qt base
         if: steps.qt-cache.outputs.cache-hit != 'true'
@@ -154,12 +154,6 @@ jobs:
             Write-Host "$($dll.Name): ARM64"
           }
 
-      - name: Verify Qt runtime
-        shell: pwsh
-        run: |
-          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
-          & "$qtBin\qmake.exe" -query
-          if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed to execute" }
       - name: Verify Qt runtime
         shell: pwsh
         run: |
