@@ -195,7 +195,7 @@ jobs:
         shell: pwsh
         run: |
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          pyqt-bundle $wheel.FullName
+          pyqt-bundle --qt-dir "C:\Qt\$env:QT_VERSION\arm64" $wheel.FullName
           $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($bundled.Count -ne 1) { throw "Expected exactly one bundled PyQt5 wheel, found $($bundled.Count)" }
           Write-Host "Bundled wheel: $($bundled.Name)"
