@@ -151,23 +151,23 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          # PyQt5's internal tool bindings need the same Windows SIP tag as
-          # QtCore. Match the constructor semantically so source line endings
-          # cannot make the patch silently miss.
+          # PyQt5-builder leaves bindings.tags unset until defaults are applied.
+          # Pass WS_WIN through the bindings constructor so the internal
+          # pylupdate/pyrcc modules parse QtCore's Windows-only SIP sections too.
           $source = Join-Path $env:RUNNER_TEMP "PyQt5-src"
           Remove-Item $source -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $source | Out-Null
           tar -xzf $env:PYQT5_ARCHIVE -C $source --strip-components=1
           $project = Join-Path $source "project.py"
           $text = Get-Content $project -Raw
-          $pattern = "(?m)^(\s+)(super\(\).__init__\(project, 'pylupdate', qmake_QT=\['xml', '-gui'\],\s*internal=True\))$"
-          $replacement = '$1$2' + [Environment]::NewLine + '$1self.tags.append(''WS_WIN'')'
+          $pattern = "(?m)^(\s+super\(\).__init__\(project, 'pylupdate', qmake_QT=\['xml', '-gui'\],\s*internal=True)(\))$"
+          $replacement = '$1, tags=[''WS_WIN'']$2'
           if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pylupdate binding constructor not found" }
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
-          $pattern = "(?m)^(\s+)(super\(\).__init__\(project, 'pyrcc', qmake_QT=\['xml', '-gui'\],\s*internal=True\))$"
+          $pattern = "(?m)^(\s+super\(\).__init__\(project, 'pyrcc', qmake_QT=\['xml', '-gui'\],\s*internal=True)(\))$"
           if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pyrcc binding constructor not found" }
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
-          if (([regex]::Matches($text, "self\.tags\.append\('WS_WIN'\)")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
+          if (([regex]::Matches($text, "tags=\['WS_WIN'\]")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
           Set-Content $project $text -Encoding utf8
           python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= $source --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
