@@ -10,6 +10,9 @@ env:
   QT_VERSION: "5.15.19"
   QT_ARCHIVE: "qtbase-everywhere-opensource-src-5.15.19.tar.xz"
   QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
+  WINFLEXBISON_VERSION: "2.5.25"
+  WINFLEXBISON_ARCHIVE: "win_flex_bison-2.5.25.zip"
+  WINFLEXBISON_SHA256: "8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135"
 
 jobs:
   qtbase-arm64:
@@ -49,14 +52,34 @@ jobs:
           "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
           Write-Host "Visual Studio: $install"
 
-      - name: Install Qt build tools
+      - name: Install pinned Qt build tools
         shell: pwsh
         run: |
+          Invoke-WebRequest -Uri "https://github.com/lexxmark/winflexbison/releases/download/v$env:WINFLEXBISON_VERSION/$env:WINFLEXBISON_ARCHIVE" -OutFile $env:WINFLEXBISON_ARCHIVE
+          $actual = (Get-FileHash $env:WINFLEXBISON_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:WINFLEXBISON_SHA256) {
+            throw "WinFlexBison SHA-256 mismatch: expected $env:WINFLEXBISON_SHA256, got $actual"
+          }
+          $tools = Join-Path $env:GITHUB_WORKSPACE "winflexbison"
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          Expand-Archive -Path $env:WINFLEXBISON_ARCHIVE -DestinationPath $tools -Force
+          "WINFLEXBISON_HOME=$tools" >> $env:GITHUB_ENV
+          $env:PATH = "$tools;$env:PATH"
+          "PATH=$tools;$env:PATH" >> $env:GITHUB_ENV
           $flex = Get-Command flex -ErrorAction SilentlyContinue
           if (-not $flex) {
-            throw "flex is required by the Qt 5.15.19 ANGLE build but was not found on PATH"
+            $winFlex = Join-Path $tools "win_flex.exe"
+            if (-not (Test-Path $winFlex)) { throw "win_flex.exe was not found after extraction" }
+            Copy-Item $winFlex (Join-Path $tools "flex.exe")
           }
-          Write-Host "flex: $($flex.Source)"
+          $bison = Get-Command bison -ErrorAction SilentlyContinue
+          if (-not $bison) {
+            $winBison = Join-Path $tools "win_bison.exe"
+            if (-not (Test-Path $winBison)) { throw "win_bison.exe was not found after extraction" }
+            Copy-Item $winBison (Join-Path $tools "bison.exe")
+          }
+          flex --version
+          bison --version
 
       - name: Download pinned Qt source
         shell: pwsh
