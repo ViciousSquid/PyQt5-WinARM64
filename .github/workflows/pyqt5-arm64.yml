@@ -123,7 +123,7 @@ jobs:
         run: |
           # Use the PyQt5 PEP 517 build now that the SIP/PyQt-builder
           # versions are aligned with PyQt5-sip 12.17.0.
-          $wheel = python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_ARCHIVE --wheel-dir dist
+          $wheel = python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= --config-settings=--quiet= $env:PYQT5_ARCHIVE --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
