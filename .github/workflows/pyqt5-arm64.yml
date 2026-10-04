@@ -151,7 +151,9 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          # PyQt5 SIP uses WS_WIN to select the Windows Q_PID typedef.\n          # Force that target tag explicitly for native Windows ARM64.\n          $wheel = python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= --config-settings=--quiet= --config-settings="--pyqt-sip-flags=-t WS_WIN" $env:PYQT5_ARCHIVE --wheel-dir dist
+          # PyQt5 SIP uses WS_WIN to select the Windows Q_PID typedef.
+          # Keep the build output visible so PEP 517 failures expose their real cause.
+          python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= --config-settings="--pyqt-sip-flags=-t WS_WIN" $env:PYQT5_ARCHIVE --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
