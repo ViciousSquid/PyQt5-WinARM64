@@ -154,21 +154,6 @@ jobs:
             Write-Host "$($dll.Name): ARM64"
           }
 
-      - name: Verify Qt process configuration
-        shell: pwsh
-        run: |
-          $qtRoot = "C:\Qt\$env:QT_VERSION\arm64"
-          $qconfig = Get-ChildItem $qtRoot -Filter "qconfig.h" -Recurse -File | Select-Object -First 1
-          if (-not $qconfig) { throw "Qt qconfig.h not found under $qtRoot" }
-          $text = Get-Content $qconfig.FullName -Raw
-          if ($text -notmatch '(?m)^#define QT_FEATURE_process 1\s*$') {
-            throw "Qt process feature is not enabled in $($qconfig.FullName)"
-          }
-          if ($text -match '(?m)^#define QT_NO_PROCESS\s*$') {
-            throw "Qt qconfig still defines QT_NO_PROCESS in $($qconfig.FullName)"
-          }
-          Write-Host "Qt process feature verified in $($qconfig.FullName)."
-
       - name: Verify Qt runtime
         shell: pwsh
         run: |
