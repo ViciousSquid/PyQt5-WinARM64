@@ -1,0 +1,94 @@
+name: PyQt5-sip ARM64 bootstrap
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYQT5_SIP_VERSION: "12.19.0"
+  PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.19.0.tar.gz"
+  PYQT5_SIP_SHA256: "71cacf1879da2cd3e50cb239e21673cfe02d358af70ab6768817c960428868c3"
+  SIP_VERSION: "6.16.1"
+
+jobs:
+  pyqt5-sip-arm64:
+    runs-on: windows-11-vs2026-arm
+    steps:
+      - name: Check runner architecture
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $proc = $env:PROCESSOR_ARCHITECTURE
+          if ($arch -ne "Arm64" -or $proc -ne "ARM64") {
+            throw "Expected native ARM64 Windows runner: RuntimeInformation=$arch PROCESSOR_ARCHITECTURE=$proc"
+          }
+
+      - name: Set up ARM64 CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.16"
+          architecture: arm64
+
+      - name: Locate ARM64 MSVC toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if (-not $install) { throw "No Visual Studio installation with the ARM64 MSVC toolchain was found" }
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found at $vsdevcmd" }
+          "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
+
+      - name: Verify ARM64 CPython
+        shell: pwsh
+        run: |
+          $arch = python -c "import platform; print(platform.machine())"
+          if ($arch -ne "ARM64") { throw "Python is not ARM64: $arch" }
+          if ([IntPtr]::Size -ne 8) { throw "Python pointer size is not 64-bit" }
+
+      - name: Install pinned SIP build tool
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "sip==$env:SIP_VERSION"
+          $version = python -c "import sip; print(sip.SIP_VERSION_STR)"
+          if ($version -ne $env:SIP_VERSION) { throw "Unexpected SIP version: $version" }
+
+      - name: Download pinned PyQt5-sip source
+        shell: pwsh
+        run: |
+          $url = "https://files.pythonhosted.org/packages/source/p/pyqt5-sip/$env:PYQT5_SIP_ARCHIVE"
+          Invoke-WebRequest -Uri $url -OutFile $env:PYQT5_SIP_ARCHIVE
+          $actual = (Get-FileHash $env:PYQT5_SIP_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PYQT5_SIP_SHA256) {
+            throw "PyQt5-sip source SHA-256 mismatch: expected $env:PYQT5_SIP_SHA256, got $actual"
+          }
+          Write-Host "PyQt5-sip source SHA-256: $actual"
+
+      - name: Build ARM64 wheel
+        shell: pwsh
+        run: |
+          python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_SIP_ARCHIVE --wheel-dir dist
+          $wheel = Get-ChildItem dist -Filter "*.whl"
+          if ($wheel.Count -ne 1) { throw "Expected exactly one wheel, found $($wheel.Count)" }
+          Write-Host "Built wheel: $($wheel.Name)"
+          if ($wheel.Name -notmatch "cp313-cp313-win_arm64\.whl$") {
+            throw "Unexpected wheel tag: $($wheel.Name)"
+          }
+
+      - name: Verify PyQt5-sip extension is ARM64
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem dist -Filter "*.whl"
+          python -m pip install --no-deps $wheel.FullName
+          $module = python -c "import PyQt5.sip, pathlib; print(pathlib.Path(PyQt5.sip.__file__))"
+          if (-not $module.EndsWith(".pyd")) { throw "PyQt5.sip did not install a native extension: $module" }
+          $dump = cmd /c ('link /dump /headers "' + $module + '"')
+          if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for $module" }
+          if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+            throw "PyQt5.sip is not an ARM64 PE image"
+          }
+          Write-Host "PyQt5.sip: ARM64"
