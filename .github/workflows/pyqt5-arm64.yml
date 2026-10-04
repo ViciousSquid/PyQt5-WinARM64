@@ -160,11 +160,11 @@ jobs:
           tar -xzf $env:PYQT5_ARCHIVE -C $source --strip-components=1
           $project = Join-Path $source "project.py"
           $text = Get-Content $project -Raw
-          $pattern = "(?ms)(super\(\).__init__\(project, 'pylupdate', qmake_QT=\['xml', '-gui'\],\s*internal=True\))"
-          $replacement = '$1' + [Environment]::NewLine + "                self.tags.append('WS_WIN')"
+          $pattern = "(?m)^(\s+)(super\(\).__init__\(project, 'pylupdate', qmake_QT=\['xml', '-gui'\],\s*internal=True\))$"
+          $replacement = '$1$2' + [Environment]::NewLine + '$1self.tags.append(''WS_WIN'')'
           if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pylupdate binding constructor not found" }
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
-          $pattern = "(?ms)(super\(\).__init__\(project, 'pyrcc', qmake_QT=\['xml', '-gui'\],\s*internal=True\))"
+          $pattern = "(?m)^(\s+)(super\(\).__init__\(project, 'pyrcc', qmake_QT=\['xml', '-gui'\],\s*internal=True\))$"
           if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pyrcc binding constructor not found" }
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
           if (([regex]::Matches($text, "self\.tags\.append\('WS_WIN'\)")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
