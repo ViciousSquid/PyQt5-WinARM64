@@ -177,10 +177,14 @@ jobs:
           # sip-wheel runs the same PyQt-builder backend without that wrapper.
           $build = Join-Path $env:RUNNER_TEMP "pyqt5-build"
           $wheelDir = Join-Path (Get-Location) "dist"
-          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $source + '" && python -m sipbuild.tools.wheel --verbose --confirm-license --build-dir "' + $build + '" --wheel-dir "' + $wheelDir + '"'
+          New-Item -ItemType Directory -Force -Path $wheelDir | Out-Null
+          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $source + '" && python -m sipbuild.tools.wheel --verbose --confirm-license --build-dir "' + $build + '"'
           cmd /c $command
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 sip-wheel build failed" }
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
+          $wheel = Get-ChildItem $source -Filter "PyQt5-*.whl"
+          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel in source directory, found $($wheel.Count)" }
+          Move-Item $wheel.FullName $wheelDir -Force
+          $wheel = Get-ChildItem $wheelDir -Filter "PyQt5-*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
           Write-Host "Built: $($wheel.Name)"
           if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
