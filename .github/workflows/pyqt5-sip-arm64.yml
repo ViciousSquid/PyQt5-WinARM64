@@ -10,7 +10,7 @@ env:
   PYQT5_SIP_VERSION: "12.17.0"
   PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.17.0.tar.gz"
   PYQT5_SIP_SHA256: "682dadcdbd2239af9fdc0c0628e2776b820e128bec88b49b8d692fe682f90b4f"
-  SIP_VERSION: "6.16.1"
+  SIP_VERSION: "6.16.0"
 
 jobs:
   pyqt5-sip-arm64:
