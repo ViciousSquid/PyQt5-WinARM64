@@ -1,0 +1,115 @@
+name: Qt ARM64 bootstrap
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: "5.15.19"
+  QT_ARCHIVE: "qtbase-everywhere-opensource-src-5.15.19.tar.xz"
+  QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
+
+jobs:
+  qtbase-arm64:
+    runs-on: windows-11-vs2026-arm
+    steps:
+      - name: Check runner architecture
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $proc = $env:PROCESSOR_ARCHITECTURE
+          if ($arch -ne "Arm64" -or $proc -ne "ARM64") {
+            throw "Expected native ARM64 Windows runner: RuntimeInformation=$arch PROCESSOR_ARCHITECTURE=$proc"
+          }
+
+      - name: Set up ARM64 CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.16"
+          architecture: arm64
+
+      - name: Verify ARM64 CPython
+        shell: pwsh
+        run: |
+          $arch = python -c "import platform; print(platform.machine())"
+          if ($arch -ne "ARM64") { throw "Python is not ARM64: $arch" }
+          if ([IntPtr]::Size -ne 8) { throw "Python pointer size is not 64-bit" }
+
+      - name: Locate ARM64 MSVC toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if (-not $install) { throw "No Visual Studio installation with the ARM64 MSVC toolchain was found" }
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found at $vsdevcmd" }
+          "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
+          Write-Host "Visual Studio: $install"
+
+      - name: Download pinned Qt source
+        shell: pwsh
+        run: |
+          $url = "https://download.qt.io/archive/qt/5.15/${env:QT_VERSION}/submodules/${env:QT_ARCHIVE}"
+          Invoke-WebRequest -Uri $url -OutFile $env:QT_ARCHIVE
+          $actual = (Get-FileHash $env:QT_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:QT_SHA256) {
+            throw "Qt source SHA-256 mismatch: expected $env:QT_SHA256, got $actual"
+          }
+          Write-Host "Qt source SHA-256: $actual"
+
+      - name: Extract Qt source
+        shell: pwsh
+        run: |
+          tar -xf $env:QT_ARCHIVE
+          $source = "qtbase-everywhere-opensource-src-$env:QT_VERSION"
+          if (-not (Test-Path "$source\configure.bat")) {
+            throw "Qt source does not contain configure.bat: $source"
+          }
+          "QT_SOURCE=$source" >> $env:GITHUB_ENV
+
+      - name: Configure Qt for native ARM64
+        shell: pwsh
+        run: |
+          $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && configure.bat -platform win32-msvc -release -opensource -confirm-license -prefix C:\Qt\$env:QT_VERSION\arm64 -nomake tests -nomake examples -no-openssl'
+          cmd /c $command
+          if ($LASTEXITCODE -ne 0) { throw "Qt configure failed" }
+
+      - name: Build Qt base
+        shell: pwsh
+        run: |
+          $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && nmake'
+          cmd /c $command
+          if ($LASTEXITCODE -ne 0) { throw "Qt build failed" }
+
+      - name: Install Qt base
+        shell: pwsh
+        run: |
+          $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && nmake install'
+          cmd /c $command
+          if ($LASTEXITCODE -ne 0) { throw "Qt install failed" }
+
+      - name: Verify Qt binaries are ARM64
+        shell: pwsh
+        run: |
+          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
+          $dlls = Get-ChildItem $qtBin -Filter "Qt5*.dll"
+          if (-not $dlls) { throw "No installed Qt5 DLLs found in $qtBin" }
+
+          foreach ($dll in $dlls) {
+            $dump = cmd /c ('link /dump /headers "' + $dll.FullName + '"')
+            if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for $($dll.Name)" }
+            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+              throw "$($dll.Name) is not an ARM64 PE image"
+            }
+            Write-Host "$($dll.Name): ARM64"
+          }
+
+      - name: Verify Qt runtime
+        shell: pwsh
+        run: |
+          $qtBin = "C:\Qt\$env:QT_VERSION\arm64\bin"
+          & "$qtBin\qmake.exe" -query
+          if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed to execute" }
