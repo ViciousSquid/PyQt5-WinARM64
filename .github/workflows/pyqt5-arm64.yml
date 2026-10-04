@@ -171,8 +171,14 @@ jobs:
           $text = [regex]::Replace($text, $pattern, $replacement, 1)
           if (([regex]::Matches($text, "tags=\['WS_WIN'\]")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
           Set-Content $project $text -Encoding utf8
-          python -m sipbuild.tools.build --verbose --confirm-license --build-dir "$env:RUNNER_TEMP\\pyqt5-build" --no-make $source
-          if ($LASTEXITCODE -ne 0) { throw "PyQt5 binding generation failed" }
+          Push-Location $source
+          try {
+            python -m sipbuild.tools.build --verbose --confirm-license --build-dir "$env:RUNNER_TEMP\\pyqt5-build" --no-make
+            if ($LASTEXITCODE -ne 0) { throw "PyQt5 binding generation failed" }
+          }
+          finally {
+            Pop-Location
+          }
           $qmake = "C:\\Qt\\$env:QT_VERSION\\arm64\\bin\\qmake.exe"
           $build = Join-Path $env:RUNNER_TEMP "pyqt5-build"
           $pro = Join-Path $build "PyQt5.pro"
