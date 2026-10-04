@@ -144,7 +144,8 @@ jobs:
           if (-not $dlls) { throw "No installed Qt5 DLLs found in $qtBin" }
 
           foreach ($dll in $dlls) {
-            $dump = cmd /c ('link /dump /headers "' + $dll.FullName + '"')
+            $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && link /dump /headers "' + $dll.FullName + '"'
+            $dump = cmd /c $command
             if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for $($dll.Name)" }
             if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
               throw "$($dll.Name) is not an ARM64 PE image"
