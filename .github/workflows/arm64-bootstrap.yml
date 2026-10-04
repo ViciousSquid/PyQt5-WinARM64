@@ -62,6 +62,7 @@ jobs:
           cmd /c "`"$vsdevcmd`" -arch=arm64 && cl /nologo /O2 hello.c /Fe:hello.exe && link /dump /headers hello.exe" > compiler.txt
           if ($LASTEXITCODE -ne 0) { Get-Content compiler.txt; throw "ARM64 MSVC compilation failed" }
           Get-Content compiler.txt
-          if (-not (Select-String -Path compiler.txt -Pattern "AA64 machine (ARM64)")) {
+          $compilerOutput = Get-Content compiler.txt -Raw
+          if (-not $compilerOutput.Contains("AA64 machine (ARM64)")) {
             throw "Compiler did not produce an ARM64 PE image"
           }
