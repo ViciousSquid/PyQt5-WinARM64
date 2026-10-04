@@ -151,23 +151,23 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          # The PyQt5 5.15.11 source defines the internal tool bindings as
-          # classes pylupdate and pyrcc. Add WS_WIN directly to those binding
-          # objects so their QtCore .sip dependencies see the Windows tag.
+          # PyQt5's internal tool bindings need the same Windows SIP tag as
+          # QtCore. Match the constructor semantically so source line endings
+          # cannot make the patch silently miss.
           $source = Join-Path $env:RUNNER_TEMP "PyQt5-src"
           Remove-Item $source -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $source | Out-Null
           tar -xzf $env:PYQT5_ARCHIVE -C $source --strip-components=1
           $project = Join-Path $source "project.py"
           $text = Get-Content $project -Raw
-          $pylupdateNeedle = "class pylupdate(PyQtBindings):"
-          $pyrccNeedle = "class pyrcc(PyQtBindings):"
-          if (-not $text.Contains($pylupdateNeedle)) { throw "PyQt5 pylupdate class not found" }
-          if (-not $text.Contains($pyrccNeedle)) { throw "PyQt5 pyrcc class not found" }
-          $text = $text.Replace($pylupdateNeedle, $pylupdateNeedle + [Environment]::NewLine + "    tags = ['WS_WIN']")
-          $text = $text.Replace($pyrccNeedle, $pyrccNeedle + [Environment]::NewLine + "    tags = ['WS_WIN']")
-          if (([regex]::Matches($text, "class (pylupdate|pyrcc)\(PyQtBindings\):")).Count -ne 2) { throw "Internal PyQt binding classes changed unexpectedly" }
-          if (([regex]::Matches($text, "tags = \['WS_WIN'\]")).Count -ne 2) { throw "Failed to tag internal PyQt bindings for Windows" }
+          $pattern = "(?ms)(super\(\).__init__\(project, 'pylupdate', qmake_QT=\['xml', '-gui'\],\s*internal=True\))"
+          $replacement = '$1' + [Environment]::NewLine + "                self.tags.append('WS_WIN')"
+          if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pylupdate binding constructor not found" }
+          $text = [regex]::Replace($text, $pattern, $replacement, 1)
+          $pattern = "(?ms)(super\(\).__init__\(project, 'pyrcc', qmake_QT=\['xml', '-gui'\],\s*internal=True\))"
+          if (-not [regex]::IsMatch($text, $pattern)) { throw "PyQt5 pyrcc binding constructor not found" }
+          $text = [regex]::Replace($text, $pattern, $replacement, 1)
+          if (([regex]::Matches($text, "self\.tags\.append\('WS_WIN'\)")).Count -ne 2) { throw "Expected WS_WIN on both internal tool bindings" }
           Set-Content $project $text -Encoding utf8
           python -m pip wheel --no-deps --no-build-isolation --config-settings=--confirm-license= $source --wheel-dir dist
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 PEP 517 wheel build failed" }
