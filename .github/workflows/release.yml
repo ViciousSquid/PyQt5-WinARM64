@@ -9,8 +9,8 @@ jobs:
   build:
     uses: ./.github/workflows/pyqt5-arm64.yml
 
-  publish:
-    name: Publish distributions to PyPI
+  publish-pyqt5:
+    name: Publish PyQt5-WinARM64
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
@@ -23,22 +23,44 @@ jobs:
           name: pyqt5-win-arm64
           path: dist
 
-      - name: List distributions
+      - name: Select PyQt5 distribution
         shell: bash
         run: |
-          ls -lh dist
-          python - <<'PY'
-          import glob
-          import zipfile
-          for wheel in glob.glob("dist/*.whl"):
-              with zipfile.ZipFile(wheel) as z:
-                  metadata = next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-                  text = z.read(metadata).decode()
-              print(f"=== {wheel} ===")
-              for line in text.splitlines():
-                  if line.startswith(("Name:", "Version:", "Requires-Dist:")):
-                      print(line)
-          PY
+          mkdir publish
+          wheel="$(find dist -maxdepth 1 -type f -name 'PyQt5_WinARM64-*.whl' -print -quit)"
+          test -n "$wheel"
+          cp "$wheel" publish/
+          ls -lh publish
 
-      - name: Publish to PyPI
+      - name: Publish PyQt5-WinARM64
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: publish
+
+  publish-sip:
+    name: Publish PyQt5-sip-WinARM64
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi-sip
+    permissions:
+      id-token: write
+    steps:
+      - name: Download validated wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pyqt5-win-arm64
+          path: dist
+
+      - name: Select PyQt5-sip distribution
+        shell: bash
+        run: |
+          mkdir publish
+          wheel="$(find dist -maxdepth 1 -type f -name 'PyQt5_sip_WinARM64-*.whl' -print -quit)"
+          test -n "$wheel"
+          cp "$wheel" publish/
+          ls -lh publish
+
+      - name: Publish PyQt5-sip-WinARM64
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: publish
