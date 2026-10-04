@@ -121,10 +121,27 @@ jobs:
       - name: Build PyQt5 ARM64 wheel
         shell: pwsh
         run: |
-          python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_ARCHIVE --wheel-dir dist
+          # Build directly with SIP/PyQt-builder instead of pip's PEP 517
+          # metadata phase. On the native ARM64 runner that metadata phase
+          # exhausted Python memory after repeatedly invoking the Qt toolchain.
+          $sourceDir = "PyQt5-$env:PYQT5_VERSION"
+          tar -xzf $env:PYQT5_ARCHIVE
+          if (-not (Test-Path "$sourceDir\pyproject.toml")) {
+            throw "PyQt5 source tree was not extracted: $sourceDir"
+          }
+          Push-Location $sourceDir
+          try {
+            sip-wheel --qmake "C:\Qt\$env:QT_VERSION\arm64\bin\qmake.exe" --concatenate 8
+            $wheel = Get-ChildItem -File -Filter "PyQt5-*.whl"
+            if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
+            Move-Item $wheel.FullName (Join-Path $PWD "..\dist\$($wheel.Name)")
+            Write-Host "Built: $($wheel.Name)"
+          }
+          finally {
+            Pop-Location
+          }
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
-          Write-Host "Built: $($wheel.Name)"
+          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel in dist, found $($wheel.Count)" }
           if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
             throw "Unexpected PyQt5 wheel tag: $($wheel.Name)"
           }
