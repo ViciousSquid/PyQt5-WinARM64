@@ -10,7 +10,7 @@ env:
   QT_VERSION: "5.15.19"
   QT_ARCHIVE: "qtbase-everywhere-opensource-src-5.15.19.tar.xz"
   QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
-  QT_CONFIGURE_REV: "process-v2"
+  QT_CONFIGURE_REV: "process-v3"
   WINFLEXBISON_VERSION: "2.5.25"
   WINFLEXBISON_ARCHIVE: "win_flex_bison-2.5.25.zip"
   WINFLEXBISON_SHA256: "8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135"
