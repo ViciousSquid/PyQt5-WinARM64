@@ -1,0 +1,44 @@
+name: Release PyQt5 Windows ARM64
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    uses: ./.github/workflows/pyqt5-arm64.yml
+
+  publish:
+    name: Publish distributions to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download validated wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pyqt5-win-arm64
+          path: dist
+
+      - name: List distributions
+        shell: bash
+        run: |
+          ls -lh dist
+          python - <<'PY'
+          import glob
+          import zipfile
+          for wheel in glob.glob("dist/*.whl"):
+              with zipfile.ZipFile(wheel) as z:
+                  metadata = next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+                  text = z.read(metadata).decode()
+              print(f"=== {wheel} ===")
+              for line in text.splitlines():
+                  if line.startswith(("Name:", "Version:", "Requires-Dist:")):
+                      print(line)
+          PY
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
