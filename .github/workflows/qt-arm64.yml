@@ -113,6 +113,13 @@ jobs:
           cmd /c $command
           if ($LASTEXITCODE -ne 0) { throw "Qt configure failed" }
 
+      - name: Restore Qt ARM64 build cache
+        id: qt-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Qt\${{ env.QT_VERSION }}\arm64
+          key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
       - name: Build Qt base
         shell: pwsh
         run: |
