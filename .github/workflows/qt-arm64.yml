@@ -107,7 +107,9 @@ jobs:
       - name: Configure Qt for native ARM64
         shell: pwsh
         run: |
-          $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && configure.bat -platform win32-msvc -release -opensource -confirm-license -prefix C:\Qt\$env:QT_VERSION\arm64 -nomake tests -nomake examples -no-openssl'
+          $qtPrefix = "C:\Qt\$env:QT_VERSION\arm64"
+          $command = '"' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $env:QT_SOURCE + '" && configure.bat -platform win32-msvc -release -opensource -confirm-license -prefix "' + $qtPrefix + '" -nomake tests -nomake examples -no-openssl'
+          Write-Host "Qt install prefix: $qtPrefix"
           cmd /c $command
           if ($LASTEXITCODE -ne 0) { throw "Qt configure failed" }
 
