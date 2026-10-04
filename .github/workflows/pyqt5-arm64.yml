@@ -18,6 +18,7 @@ env:
   PYQT_BUILDER_VERSION: "1.18.0"
   QT_VERSION: "5.15.19"
   QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
+  QT_CONFIGURE_REV: "process-v1"
   WINFLEXBISON_VERSION: "2.5.25"
 
 jobs:
@@ -61,7 +62,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\Qt\${{ env.QT_VERSION }}\arm64
-          key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          key: qt-arm64-${{ env.QT_VERSION }}-${{ env.QT_SHA256 }}-${{ env.QT_CONFIGURE_REV }}-${{ env.WINFLEXBISON_VERSION }}-${{ runner.os }}-${{ runner.arch }}
           fail-on-cache-miss: true
 
       - name: Verify Qt ARM64 toolchain
@@ -74,6 +75,35 @@ jobs:
           "PATH=$(Split-Path $qmake);$env:PATH" >> $env:GITHUB_ENV
           & $qmake -query
           if ($LASTEXITCODE -ne 0) { throw "ARM64 qmake failed" }
+
+      - name: Verify Qt process feature
+        shell: pwsh
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP "qt-process-probe"
+          New-Item -ItemType Directory -Force -Path $probe | Out-Null
+          @'
+          QT += core
+          CONFIG += console
+          CONFIG -= app_bundle
+          SOURCES += main.cpp
+          '@ | Set-Content (Join-Path $probe "process.pro") -Encoding ascii
+          @'
+          #include <QCoreApplication>
+          #ifdef QT_NO_PROCESS
+          #error QT_NO_PROCESS is defined
+          #endif
+          #include <QProcess>
+          int main(int argc, char **argv)
+          {
+              QCoreApplication app(argc, argv);
+              QProcess process;
+              return process.state() == QProcess::NotRunning ? 0 : 1;
+          }
+          '@ | Set-Content (Join-Path $probe "main.cpp") -Encoding ascii
+          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $probe + '" && "' + "C:\Qt\$env:QT_VERSION\arm64\bin\qmake.exe" + '" process.pro && nmake'
+          cmd /c $command
+          if ($LASTEXITCODE -ne 0) { throw "Qt process feature probe failed" }
+          Write-Host "Qt process feature is enabled."
 
       - name: Install pinned PyQt build tools
         shell: pwsh
