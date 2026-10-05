@@ -191,17 +191,56 @@ jobs:
           throw "Unexpected PyQt5 wheel tag: $($wheel.Name)"
           }
 
+      - name: Prepare Qt runtime dependencies for bundling
+        shell: pwsh
+        run: |
+          $qtDir = "C:\Qt\$env:QT_VERSION\arm64"
+          $qtBin = Join-Path $qtDir "bin"
+
+          # pyqt-bundle 1.17.0 expects the standard Qt installation layout and
+          # scans translations unconditionally for the QtCore metadata.
+          # This ARM64 build is based on qtbase, so the optional translations
+          # module is intentionally absent. An empty directory is sufficient;
+          # no translation files are fabricated.
+          $translations = Join-Path $qtDir "translations"
+          New-Item -ItemType Directory -Force -Path $translations | Out-Null
+
+          # PyQt-builder's QtGui metadata requires the Windows D3D compiler
+          # runtime used by Qt's Windows OpenGL/ANGLE deployment. It is not
+          # produced by qtbase itself, so source the ARM64 redistributable from
+          # the installed Windows SDK rather than copying a host/system DLL.
+          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10"
+          $d3dCandidates = @(
+            (Join-Path $sdkRoot "Redist\D3D\arm64\d3dcompiler_47.dll")
+          ) + @(Get-ChildItem (Join-Path $sdkRoot "Redist\D3D") -Recurse -Filter "d3dcompiler_47.dll" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match "\\arm64\\" } |
+                Select-Object -ExpandProperty FullName)
+
+          $d3dSource = $d3dCandidates |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+
+          if (-not $d3dSource) {
+            throw "ARM64 Windows SDK d3dcompiler_47.dll was not found under $sdkRoot\Redist\D3D"
+          }
+
+          $d3dTarget = Join-Path $qtBin "d3dcompiler_47.dll"
+          Copy-Item $d3dSource $d3dTarget -Force
+
+          $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && link /dump /headers "' + $d3dTarget + '"'
+          $dump = cmd /c $command
+          if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for d3dcompiler_47.dll" }
+          $dumpText = $dump -join [Environment]::NewLine
+          if (-not ($dumpText.Contains("AA64 machine (ARM64)"))) {
+            throw "d3dcompiler_47.dll is not an ARM64 PE image: $d3dSource"
+          }
+
+          Write-Host "Using ARM64 D3D compiler runtime: $d3dSource"
+
       - name: Bundle native Qt into PyQt5 wheel
         shell: pwsh
         run: |
           $qtDir = "C:\Qt\$env:QT_VERSION\arm64"
-          # The ARM64 Qt cache is built from qtbase. pyqt-bundle 1.17.0 expects
-          # the standard Qt layout and unconditionally scans translations.
-          # qtbase does not install that optional module, so create the expected
-          # directory before bundling. No translation files are fabricated.
-          $translations = Join-Path $qtDir "translations"
-          New-Item -ItemType Directory -Force -Path $translations | Out-Null
-
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
           pyqt-bundle --qt-dir $qtDir $wheel.FullName
           $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
