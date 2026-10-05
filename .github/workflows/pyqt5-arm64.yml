@@ -194,8 +194,16 @@ jobs:
       - name: Bundle native Qt into PyQt5 wheel
         shell: pwsh
         run: |
+          $qtDir = "C:\Qt\$env:QT_VERSION\arm64"
+          # The ARM64 Qt cache is built from qtbase. pyqt-bundle 1.17.0 expects
+          # the standard Qt layout and unconditionally scans translations.
+          # qtbase does not install that optional module, so create the expected
+          # directory before bundling. No translation files are fabricated.
+          $translations = Join-Path $qtDir "translations"
+          New-Item -ItemType Directory -Force -Path $translations | Out-Null
+
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          pyqt-bundle --qt-dir "C:\Qt\$env:QT_VERSION\arm64" $wheel.FullName
+          pyqt-bundle --qt-dir $qtDir $wheel.FullName
           $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($bundled.Count -ne 1) { throw "Expected exactly one bundled PyQt5 wheel, found $($bundled.Count)" }
           Write-Host "Bundled wheel: $($bundled.Name)"
