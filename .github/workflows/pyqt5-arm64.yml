@@ -241,8 +241,51 @@ jobs:
         shell: pwsh
         run: |
           $qtDir = "C:\Qt\$env:QT_VERSION\arm64"
+          $qtBin = Join-Path $qtDir "bin"
           $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          pyqt-bundle --qt-dir $qtDir $wheel.FullName
+
+          # pyqt-bundle 1.17.0 lists opengl32sw.dll as a QtGui dependency,
+          # but this source-built ARM64 qtbase installation does not include
+          # the optional Mesa software OpenGL fallback. Do not fabricate or
+          # substitute a DLL for it.
+          #
+          # --ignore-missing is therefore used only with a strict post-check:
+          # the only missing file we permit is opengl32sw.dll. Core Qt/ANGLE
+          # runtime dependencies remain mandatory and are verified here.
+          $requiredGraphics = @(
+            "d3dcompiler_47.dll",
+            "libEGL.dll",
+            "libGLESv2.dll"
+          )
+          foreach ($name in $requiredGraphics) {
+            $path = Join-Path $qtBin $name
+            if (-not (Test-Path $path)) {
+              throw "Required Qt graphics runtime is missing: $path"
+            }
+          }
+
+          $bundleLog = Join-Path $env:RUNNER_TEMP "pyqt-bundle.log"
+          & pyqt-bundle --verbose --ignore-missing --qt-dir $qtDir $wheel.FullName 2>&1 |
+            Tee-Object -FilePath $bundleLog
+          if ($LASTEXITCODE -ne 0) {
+            throw "pyqt-bundle failed"
+          }
+
+          $unexpectedMissing = Select-String -Path $bundleLog -Pattern "Ignoring missing '([^']+)'" |
+            ForEach-Object {
+              if ($_.Line -match "Ignoring missing '([^']+)'") { $Matches[1] }
+            } |
+            Where-Object { $_ -ne "opengl32sw.dll" } |
+            Select-Object -Unique
+
+          if ($unexpectedMissing) {
+            throw "pyqt-bundle skipped unexpected missing Qt files: $($unexpectedMissing -join ', ')"
+          }
+
+          if (Select-String -Path $bundleLog -Pattern "Ignoring missing 'opengl32sw.dll'" -Quiet) {
+            Write-Host "opengl32sw.dll is absent; continuing without the optional Mesa software OpenGL fallback."
+          }
+
           $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
           if ($bundled.Count -ne 1) { throw "Expected exactly one bundled PyQt5 wheel, found $($bundled.Count)" }
           Write-Host "Bundled wheel: $($bundled.Name)"
