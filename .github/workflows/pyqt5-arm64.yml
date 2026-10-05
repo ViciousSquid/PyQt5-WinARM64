@@ -313,7 +313,11 @@ jobs:
       - name: Verify wheel contents are ARM64
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
+          $wheel = Get-ChildItem dist -Filter "*.whl" |
+            Where-Object { $_.Name -match "^PyQt5[_-]WinARM64-.*\.whl$" }
+          if ($wheel.Count -ne 1) {
+            throw "Expected exactly one retagged PyQt5-WinARM64 wheel, found $($wheel.Count)"
+          }
           python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print('\n'.join(n for n in z.namelist() if n.lower().endswith(('.pyd','.dll'))))" $wheel.FullName
           python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); z.extractall('wheel-inspect')" $wheel.FullName
           $binaries = Get-ChildItem wheel-inspect -Recurse -File | Where-Object { $_.Extension -in ".pyd",".dll" }
