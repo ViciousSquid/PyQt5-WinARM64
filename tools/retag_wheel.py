@@ -19,10 +19,19 @@ def normalize_wheel_name(name: str) -> str:
 
 
 def wheel_filename(name: str, old_name: str, new_name: str) -> str:
-    old_prefix = normalize_wheel_name(old_name) + "-"
-    if not name.startswith(old_prefix) or not name.endswith(".whl"):
-        raise ValueError(f"wheel filename does not start with {old_prefix!r}: {name}")
-    return normalize_wheel_name(new_name) + name[len(normalize_wheel_name(old_name)) :]
+    if not name.lower().endswith(".whl"):
+        raise ValueError(f"not a wheel filename: {name}")
+
+    normalized_filename = normalize_wheel_name(name[:-4])
+    old_prefix = normalize_wheel_name(old_name) + "_"
+    if not normalized_filename.startswith(old_prefix):
+        raise ValueError(
+            f"wheel filename does not start with distribution {old_name!r}: {name}"
+        )
+
+    # Wheel distribution names are normalized by replacing runs of '-', '_' and
+    # '.' with '_', but the source wheel may use a different spelling/case.
+    return normalize_wheel_name(new_name) + name[len(old_name):]
 
 
 def digest(data: bytes) -> str:
