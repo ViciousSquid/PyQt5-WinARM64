@@ -25,6 +25,9 @@ jobs:
   pyqt5-arm64:
     runs-on: windows-11-vs2026-arm
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
       - name: Check runner architecture
         shell: pwsh
         run: |
