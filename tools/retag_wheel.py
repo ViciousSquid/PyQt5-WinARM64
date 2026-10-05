@@ -58,22 +58,24 @@ def rewrite_wheel(path: Path, old_name: str, new_name: str, requirements: list[t
         raise ValueError(f"no .dist-info/METADATA found in {path}")
 
     metadata = next(data for info, data in entries if info.filename == metadata_name).decode("utf-8")
-    if not re.search(r"(?m)^Name:\s*" + re.escape(old_name) + r"\s*$", metadata, re.IGNORECASE):
+
+    # Core metadata and wheel filenames use distribution-name normalization:
+    # runs of '-', '_' and '.' are equivalent for matching purposes.
+    name_match = re.search(r"(?m)^(Name:\s*)([^\r\n]+?)\s*$", metadata)
+    if name_match is None or normalize_wheel_name(name_match.group(2)) != normalize_wheel_name(old_name):
         raise ValueError(f"wheel metadata does not declare Name: {old_name}")
 
-    metadata = re.sub(
-        r"(?m)^(Name:\s*)" + re.escape(old_name) + r"\s*$",
-        r"\g<1>" + new_name,
-        metadata,
-        count=1,
-        flags=re.IGNORECASE,
-    )
+    metadata = metadata[:name_match.start(2)] + new_name + metadata[name_match.end(2):]
+
     for old_requirement, new_requirement in requirements:
-        metadata = re.sub(
-            r"(?im)^(Requires-Dist:\s*)" + re.escape(old_requirement) + r"(?=\s*(?:[;(]|$))",
-            r"\g<1>" + new_requirement,
-            metadata,
-        )
+        requirement_pattern = re.compile(r"(?im)^(Requires-Dist:\s*)([^\s;(]+)")
+
+        def replace_requirement(match: re.Match[str]) -> str:
+            if normalize_wheel_name(match.group(2)) == normalize_wheel_name(old_requirement):
+                return match.group(1) + new_requirement
+            return match.group(0)
+
+        metadata = requirement_pattern.sub(replace_requirement, metadata)
 
     old_dist_info = dist_info_prefix.rstrip("/")
     version = old_dist_info.rsplit("-", 1)[1].removesuffix(".dist-info")
