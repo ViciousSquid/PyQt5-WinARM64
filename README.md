@@ -10,12 +10,14 @@ This repository builds and validates PyQt5 against a native Windows ARM64 CPytho
 
 **PyQt5-WinARM64 5.15.11**
 
-The first release provides native Windows ARM64 wheels for:
+The current 5.15.11 release provides native Windows ARM64 wheels for:
 
 - PyQt5 5.15.11
-- PyQt5-sip 12.17.0
+- PyQt5-sip 12.15.0 for CPython 3.13
 
-The PyQt5 wheel uses the standard `cp38-abi3-win_arm64` ABI tag. The next release build targets CPython 3.14 ARM64 for PyQt5-sip as `cp314-cp314-win_arm64`.
+The PyQt5 wheel uses the standard `cp38-abi3-win_arm64` ABI tag, so the PyQt5 wheel can be used by compatible newer CPython releases. The released SIP wheel is CPython 3.13-specific.
+
+A separate CPython 3.14 ARM64 SIP build is being produced as `cp314-cp314-win_arm64`; it does not replace or modify the existing 3.13 release.
 
 ## Installation
 
@@ -54,10 +56,10 @@ The project deliberately validates the stack in stages:
 
 No wheel release is considered valid until a clean ARM64 environment can install the wheels, import PyQt5, and create a `QApplication`.
 
-The current CI validation covers:
+The release validation for **5.15.11** covers:
 
 - native Windows ARM64 GitHub Actions runner
-- CPython 3.14.8 ARM64
+- CPython 3.13 ARM64 for the released SIP wheel
 - MSVC ARM64
 - Qt 5.15.19 built natively for ARM64
 - PyQt5-sip 12.15.0
@@ -66,6 +68,8 @@ The current CI validation covers:
 - ARM64 PE headers for every bundled `.pyd` and `.dll`
 - clean ARM64 virtual-environment installation
 - `QApplication([])` startup
+
+The repository also has a separate CPython 3.14 ARM64 SIP build path. That build is independent of the 5.15.11/CPython 3.13 release.
 
 ## Distribution names
 
@@ -97,6 +101,8 @@ The 5.15.11 release contains:
 
 - `pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl`
 - `pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl`
+
+The CPython 3.14 SIP build is separate and does not alter these release assets.
 
 ## Licensing
 
