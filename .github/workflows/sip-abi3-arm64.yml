@@ -1,0 +1,105 @@
+name: SIP 6.8.6 ABI3 ARM64
+
+on:
+  push:
+    branches:
+      - "abi3/sip-6.8.6-cp312"
+    paths:
+      - "sip_abi3/**"
+      - ".github/workflows/sip-abi3-arm64.yml"
+  pull_request:
+    branches:
+      - "abi3/sip-6.8.6-cp312"
+    paths:
+      - "sip_abi3/**"
+      - ".github/workflows/sip-abi3-arm64.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build SIP 6.8.6 cp312-abi3 on native ARM64
+    runs-on: windows-11-vs2026-arm
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v5
+
+      - name: Check runner architecture
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          if ($arch -ne "Arm64" -or $env:PROCESSOR_ARCHITECTURE -ne "ARM64") {
+            throw "Expected native Windows ARM64 runner"
+          }
+
+      - name: Set up CPython 3.12 ARM64
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: arm64
+
+      - name: Verify CPython ABI floor
+        shell: pwsh
+        working-directory: sip_abi3
+        run: |
+          $version = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+          if ($version -ne "3.12") { throw "Expected CPython 3.12, got $version" }
+          if ([IntPtr]::Size -ne 8) { throw "Expected 64-bit CPython" }
+
+      - name: Locate ARM64 MSVC toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if (-not $install) { throw "No ARM64 MSVC toolchain found" }
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found" }
+          "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
+
+      - name: Build cp312-abi3 wheel
+        shell: pwsh
+        working-directory: sip_abi3
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          New-Item -ItemType Directory -Force dist | Out-Null
+          python -m pip wheel . --no-build-isolation --no-deps --wheel-dir dist
+          $wheel = Get-ChildItem dist -Filter "*.whl"
+          if ($wheel.Count -ne 1) { throw "Expected one wheel, found $($wheel.Count)" }
+          Write-Host "Built wheel: $($wheel.Name)"
+          if ($wheel.Name -notmatch "cp312-abi3-win_arm64\.whl$") {
+            throw "Wheel is not cp312-abi3-win_arm64: $($wheel.Name)"
+          }
+
+      - name: Install wheel into isolated test directory
+        shell: pwsh
+        working-directory: sip_abi3
+        run: |
+          $wheel = Get-ChildItem dist -Filter "*.whl"
+          $target = Join-Path $PWD "test-install"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          python -m pip install --no-deps --target $target $wheel.FullName
+          New-Item -ItemType Directory -Force -Path (Join-Path $target "PyQt5") | Out-Null
+          Set-Content -Path (Join-Path $target "PyQt5\__init__.py") -Value ""
+          $env:PYTHONPATH = $target
+          python -c "import PyQt5.sip as sip; assert sip.SIP_VERSION_STR == '6.8.6'; assert sip.SIP_VERSION == 0x60806; print(sip.__file__); print(sip.SIP_VERSION_STR)"
+          python -c "import PyQt5.sip as sip; assert isinstance(sip.voidptr(0), sip.voidptr); print('voidptr smoke test passed')"
+
+      - name: Validate ARM64 PE image
+        shell: pwsh
+        working-directory: sip_abi3
+        run: |
+          $wheel = Get-ChildItem dist -Filter "*.whl"
+          $target = Join-Path $PWD "pe-test"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          python -m pip install --no-deps --target $target $wheel.FullName
+          $module = Get-ChildItem (Join-Path $target "PyQt5") -Filter "*.pyd" | Select-Object -First 1
+          if (-not $module) { throw "No PyQt5.sip extension found" }
+          $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 && link /dump /headers "' + $module.FullName + '"')
+          if ($LASTEXITCODE -ne 0) { throw "PE inspection failed" }
+          if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+            throw "Extension is not ARM64"
+          }
