@@ -3,6 +3,8 @@ name: PyQt5 ARM64 wheel
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - ".github/workflows/release.yml"
   pull_request:
   workflow_dispatch:
   workflow_call:
