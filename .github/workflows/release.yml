@@ -1,4 +1,4 @@
-name: Release PyQt5 Windows ARM64
+name: Publish PyQt5 Windows ARM64
 
 on:
   workflow_dispatch:
@@ -31,15 +31,15 @@ jobs:
             "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl" \
             -o publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
           python - <<'PY'
-import zipfile
-from pathlib import Path
-wheel = Path("publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl")
-with zipfile.ZipFile(wheel) as z:
-    metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-assert "Name: PyQt5-WinARM64" in metadata
-assert "Version: 5.15.11" in metadata
-print(wheel.name, "validated")
-PY
+          import zipfile
+          from pathlib import Path
+          wheel = Path("publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl")
+          with zipfile.ZipFile(wheel) as z:
+              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+          assert "Name: PyQt5-WinARM64" in metadata
+          assert "Version: 5.15.11" in metadata
+          print(wheel.name, "validated")
+          PY
           ls -lh publish
 
       - name: Publish PyQt5-WinARM64 to PyPI
@@ -66,15 +66,15 @@ PY
             "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl" \
             -o publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
           python - <<'PY'
-import zipfile
-from pathlib import Path
-wheel = Path("publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl")
-with zipfile.ZipFile(wheel) as z:
-    metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-assert "Name: PyQt5-sip-WinARM64" in metadata
-assert "Version: 12.15.0" in metadata
-print(wheel.name, "validated")
-PY
+          import zipfile
+          from pathlib import Path
+          wheel = Path("publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl")
+          with zipfile.ZipFile(wheel) as z:
+              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+          assert "Name: PyQt5-sip-WinARM64" in metadata
+          assert "Version: 12.15.0" in metadata
+          print(wheel.name, "validated")
+          PY
           ls -lh publish
 
       - name: Publish PyQt5-sip-WinARM64 to PyPI
