@@ -13,9 +13,9 @@ This repository builds and validates PyQt5 against a native Windows ARM64 CPytho
 The first release provides native Windows ARM64 wheels for:
 
 - PyQt5 5.15.11
-- PyQt5-sip 12.15.0
+- PyQt5-sip 12.17.0
 
-The PyQt5 wheel uses the standard `cp38-abi3-win_arm64` ABI tag, while PyQt5-sip is built for CPython 3.13 ARM64 as `cp313-cp313-win_arm64`.
+The PyQt5 wheel uses the standard `cp38-abi3-win_arm64` ABI tag. The next release build targets CPython 3.14 ARM64 for PyQt5-sip as `cp314-cp314-win_arm64`.
 
 ## Installation
 
@@ -57,7 +57,7 @@ No wheel release is considered valid until a clean ARM64 environment can install
 The current CI validation covers:
 
 - native Windows ARM64 GitHub Actions runner
-- CPython 3.13 ARM64
+- CPython 3.14.8 ARM64
 - MSVC ARM64
 - Qt 5.15.19 built natively for ARM64
 - PyQt5-sip 12.15.0
@@ -82,7 +82,7 @@ The release pipeline pins and verifies:
 
 - PyQt5 5.15.11
 - PyQt5-sip 12.15.0
-- SIP 6.8.6
+- SIP 6.10.0
 - PyQt-builder 1.17.0
 - Qt 5.15.19
 - WinFlexBison 2.5.25
