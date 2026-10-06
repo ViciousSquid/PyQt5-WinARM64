@@ -20,6 +20,9 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Check out publishing helper
+        uses: actions/checkout@v5
+
       - name: Download wheel from GitHub release
         shell: bash
         env:
@@ -41,6 +44,7 @@ jobs:
           print(wheel.name, "validated")
           PY
           ls -lh publish
+          python tools/repair_publish_wheel.py publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
 
       - name: Publish PyQt5-WinARM64 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -55,6 +59,9 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Check out publishing helper
+        uses: actions/checkout@v5
+
       - name: Download wheel from GitHub release
         shell: bash
         env:
@@ -76,6 +83,7 @@ jobs:
           print(wheel.name, "validated")
           PY
           ls -lh publish
+          python tools/repair_publish_wheel.py publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
 
       - name: Publish PyQt5-sip-WinARM64 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
