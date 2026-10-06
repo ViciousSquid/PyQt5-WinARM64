@@ -1077,10 +1077,7 @@ const sipAPIDef *sip_init_library(PyObject *mod_dict)
     if (PyType_Ready((PyTypeObject *)&sipWrapper_Type) < 0)
         return NULL;
 
-    if (PyType_Ready(&sipMethodDescr_Type) < 0)
-        return NULL;
-
-    if (PyType_Ready(&sipVariableDescr_Type) < 0)
+    if (sipInitDescriptorTypes() < 0)
         return NULL;
 
     sipEnumType_Type.tp_base = &PyType_Type;
@@ -8552,7 +8549,7 @@ static PyObject *sip_api_is_py_method_12_8(sip_gilstate_t *gil, char *pymc,
          * Check any possible reimplementation is not the wrapped C++ method or
          * a default special method implementation.
          */
-        if (cls_dict != NULL && (cls_attr = PyDict_GetItem(cls_dict, mname_obj)) != NULL && Py_TYPE(cls_attr) != &sipMethodDescr_Type && Py_TYPE(cls_attr) != &PyWrapperDescr_Type)
+        if (cls_dict != NULL && (cls_attr = PyDict_GetItem(cls_dict, mname_obj)) != NULL && Py_TYPE(cls_attr) != sipMethodDescr_Type && Py_TYPE(cls_attr) != &PyWrapperDescr_Type)
         {
             reimp = cls_attr;
             break;
@@ -10376,12 +10373,12 @@ static int sip_api_init_mixin(PyObject *self, PyObject *args, PyObject *kwds,
         if (rc > 0)
             continue;
 
-        if (PyObject_IsInstance(value, (PyObject *)&sipMethodDescr_Type))
+        if (PyObject_IsInstance(value, (PyObject *)sipMethodDescr_Type))
         {
             if ((value = sipMethodDescr_Copy(value, mixin_name)) == NULL)
                 goto gc_mixin_name;
         }
-        else if (PyObject_IsInstance(value, (PyObject *)&sipVariableDescr_Type))
+        else if (PyObject_IsInstance(value, (PyObject *)sipVariableDescr_Type))
         {
             if ((value = sipVariableDescr_Copy(value, mixin_name)) == NULL)
                 goto gc_mixin_name;
