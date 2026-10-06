@@ -8,8 +8,6 @@ on:
       - "sip_abi3/**"
       - ".github/workflows/sip-abi3-arm64.yml"
   pull_request:
-    branches:
-      - "abi3/sip-6.8.6-cp312"
     paths:
       - "sip_abi3/**"
       - ".github/workflows/sip-abi3-arm64.yml"
