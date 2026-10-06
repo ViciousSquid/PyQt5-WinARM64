@@ -1,49 +1,25 @@
 name: Release PyQt5 Windows ARM64
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing GitHub release to update"
+        required: true
+        default: "v5.15.11"
+      source_run_id:
+        description: "Successful PyQt5 ARM64 wheel workflow run containing the validated wheels"
+        required: true
+        type: string
 
 jobs:
-  build:
-    uses: ./.github/workflows/pyqt5-arm64.yml
-
-  publish-pyqt5:
-    name: Publish PyQt5-WinARM64
-    needs: build
-    if: startsWith(github.ref_name, 'v5.15.11') && github.ref_name == 'v5.15.11'
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download validated wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pyqt5-win-arm64
-          path: dist
-
-      - name: Select PyQt5 distribution
-        shell: bash
-        run: |
-          mkdir publish
-          wheel="$(find dist -maxdepth 1 -type f -name 'PyQt5_WinARM64-*.whl' -print -quit)"
-          test -n "$wheel"
-          cp "$wheel" publish/
-          ls -lh publish
-
-      - name: Publish PyQt5-WinARM64
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: publish
-
   publish-sip:
-    name: Publish PyQt5-sip-WinARM64
-    needs: build
+    name: Publish PyQt5-sip-WinARM64 and update GitHub release
     runs-on: ubuntu-latest
     environment: pypi-sip
     permissions:
+      actions: read
+      contents: write
       id-token: write
     steps:
       - name: Download validated wheels
@@ -51,15 +27,30 @@ jobs:
         with:
           name: pyqt5-win-arm64
           path: dist
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
 
-      - name: Select PyQt5-sip distribution
+      - name: Select and validate PyQt5-sip 12.17.0 CPython 3.14 wheel
         shell: bash
         run: |
-          mkdir publish
-          wheel="$(find dist -maxdepth 1 -type f -name 'PyQt5_sip_WinARM64-*.whl' -print -quit)"
+          set -euo pipefail
+          mkdir -p publish
+          wheel="$(find dist -maxdepth 1 -type f -name 'pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl' -print -quit)"
           test -n "$wheel"
           cp "$wheel" publish/
           ls -lh publish
+          python -m pip install --disable-pip-version-check --no-index --find-links publish "pyqt5-sip-WinARM64==12.17.0"
+
+      - name: Upload SIP wheel to existing GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" >/dev/null
+          gh release upload "$RELEASE_TAG" publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl --clobber
 
       - name: Publish PyQt5-sip-WinARM64
         uses: pypa/gh-action-pypi-publish@release/v1
