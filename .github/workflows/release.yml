@@ -12,6 +12,7 @@ jobs:
   publish-pyqt5:
     name: Publish PyQt5-WinARM64
     needs: build
+    if: startsWith(github.ref_name, 'v5.15.11') && github.ref_name == 'v5.15.11'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
