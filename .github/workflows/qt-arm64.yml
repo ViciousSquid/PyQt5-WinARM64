@@ -3,6 +3,8 @@ name: Qt ARM64 bootstrap
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - ".github/workflows/release.yml"
   pull_request:
   workflow_dispatch:
 
