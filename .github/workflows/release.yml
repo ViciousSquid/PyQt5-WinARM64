@@ -4,55 +4,64 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing GitHub release to update"
+        description: "Existing GitHub release containing the validated wheels"
         required: true
         default: "v5.15.11"
-      source_run_id:
-        description: "Successful PyQt5 ARM64 wheel workflow run containing the validated wheels"
-        required: true
-        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  publish-sip:
-    name: Publish PyQt5-sip-WinARM64 and update GitHub release
+  publish-pyqt5:
+    name: Publish PyQt5-WinARM64
     runs-on: ubuntu-latest
-    environment: pypi-sip
+    environment: pypi
     permissions:
-      actions: read
-      contents: write
+      contents: read
       id-token: write
     steps:
-      - name: Download validated wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pyqt5-win-arm64
-          path: dist
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.source_run_id }}
-
-      - name: Select and validate PyQt5-sip 12.17.0 CPython 3.14 wheel
+      - name: Download wheel from GitHub release
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           mkdir -p publish
-          wheel="$(find dist -maxdepth 1 -type f -name 'pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl' -print -quit)"
-          test -n "$wheel"
-          cp "$wheel" publish/
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl" \
+            -o publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
+          python -m pip install --disable-pip-version-check --no-index --no-deps \
+            publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
           ls -lh publish
-          python -m pip install --disable-pip-version-check --no-index --find-links publish "pyqt5-sip-WinARM64==12.17.0"
 
-      - name: Upload SIP wheel to existing GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+      - name: Publish PyQt5-WinARM64 to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: publish
+
+  publish-sip:
+    name: Publish PyQt5-sip-WinARM64
+    runs-on: ubuntu-latest
+    environment: pypi-sip
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download wheel from GitHub release
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          gh release view "$RELEASE_TAG" >/dev/null
-          gh release upload "$RELEASE_TAG" publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl --clobber
+          mkdir -p publish
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl" \
+            -o publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
+          python -m pip install --disable-pip-version-check --no-index --no-deps \
+            publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
+          ls -lh publish
 
-      - name: Publish PyQt5-sip-WinARM64
+      - name: Publish PyQt5-sip-WinARM64 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: publish
