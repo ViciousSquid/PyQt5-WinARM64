@@ -74,9 +74,14 @@ The deallocators use `PyObject_GC_Del()` instead of reading `tp_free`.
 
 The internal type handles are now `PyTypeObject *` and `sip_init_library()` calls `sipInitDescriptorTypes()` rather than `PyType_Ready()`.
 
-The resulting build was corrected once before completion: the pointer transition in the descriptor constructors still passed `&sip..._Type` to `PyType_GenericAlloc()`. That was changed to pass the heap-type pointer itself. The corrected build is now running.
+The descriptor conversion compile completed and exposed two remaining mechanical violations in the copy/dealloc paths:
 
-Its compiler/test outcome will be recorded here before the next architectural conversion.
+- two constructor calls still passed `&sipMethodDescr_Type` / `&sipVariableDescr_Type` after the globals became pointers;
+- the variable-descriptor deallocator still read `Py_TYPE(self)->tp_free`.
+
+Classification: **remaining direct concrete-type access inside the just-converted descriptor layer**. No fallback or compatibility path was introduced.
+
+Both are now removed: constructors pass the heap-type pointers directly and both GC deallocators use `PyObject_GC_Del()`. A fresh native ARM64 build is running from commit `a78b79c25a305c5f5908c1b2763f4c368fb31297`.
 
 ## Remaining blockers
 
