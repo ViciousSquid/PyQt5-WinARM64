@@ -165,7 +165,7 @@ jobs:
           PY
 
       - name: Upload wheel to GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.release_tag }}
           files: publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl
