@@ -73,7 +73,7 @@ static PyType_Spec sipMethodDescr_spec = {
  */
 PyObject *sipMethodDescr_New(PyMethodDef *pmd)
 {
-    PyObject *descr = PyType_GenericAlloc(&sipMethodDescr_Type, 0);
+    PyObject *descr = PyType_GenericAlloc(sipMethodDescr_Type, 0);
 
     if (descr != NULL)
     {
@@ -264,7 +264,7 @@ static int get_instance_address(sipVariableDescr *vd, PyObject *obj,
 PyObject *sipVariableDescr_New(sipVariableDef *vd, const sipTypeDef *td,
         const sipContainerDef *cod)
 {
-    PyObject *descr = PyType_GenericAlloc(&sipVariableDescr_Type, 0);
+    PyObject *descr = PyType_GenericAlloc(sipVariableDescr_Type, 0);
 
     if (descr != NULL)
     {
