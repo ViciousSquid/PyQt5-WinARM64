@@ -47,57 +47,25 @@ typedef struct _sipMethodDescr {
 /*
  * The type data structure.
  */
-PyTypeObject sipMethodDescr_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "sip.methoddescriptor", /* tp_name */
-    sizeof (sipMethodDescr),    /* tp_basicsize */
-    0,                      /* tp_itemsize */
-    sipMethodDescr_dealloc, /* tp_dealloc */
-    0,                      /* tp_print */
-    0,                      /* tp_getattr */
-    0,                      /* tp_setattr */
-    0,                      /* tp_compare */
-    sipMethodDescr_repr,    /* tp_repr */
-    0,                      /* tp_as_number */
-    0,                      /* tp_as_sequence */
-    0,                      /* tp_as_mapping */
-    0,                      /* tp_hash */
-    0,                      /* tp_call */
-    0,                      /* tp_str */
-    0,                      /* tp_getattro */
-    0,                      /* tp_setattro */
-    0,                      /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_GC,  /* tp_flags */
-    0,                      /* tp_doc */
-    sipMethodDescr_traverse,/* tp_traverse */
-    sipMethodDescr_clear,   /* tp_clear */
-    0,                      /* tp_richcompare */
-    0,                      /* tp_weaklistoffset */
-    0,                      /* tp_iter */
-    0,                      /* tp_iternext */
-    0,                      /* tp_methods */
-    0,                      /* tp_members */
-    0,                      /* tp_getset */
-    0,                      /* tp_base */
-    0,                      /* tp_dict */
-    sipMethodDescr_descr_get,   /* tp_descr_get */
-    0,                      /* tp_descr_set */
-    0,                      /* tp_dictoffset */
-    0,                      /* tp_init */
-    0,                      /* tp_alloc */
-    0,                      /* tp_new */
-    0,                      /* tp_free */
-    0,                      /* tp_is_gc */
-    0,                      /* tp_bases */
-    0,                      /* tp_mro */
-    0,                      /* tp_cache */
-    0,                      /* tp_subclasses */
-    0,                      /* tp_weaklist */
-    0,                      /* tp_del */
-    0,                      /* tp_version_tag */
-    0,                      /* tp_finalize */
-    0,                      /* tp_vectorcall */
+PyTypeObject *sipMethodDescr_Type;
+
+static PyType_Slot sipMethodDescr_slots[] = {
+    {Py_tp_dealloc, sipMethodDescr_dealloc},
+    {Py_tp_repr, sipMethodDescr_repr},
+    {Py_tp_traverse, sipMethodDescr_traverse},
+    {Py_tp_clear, sipMethodDescr_clear},
+    {Py_tp_descr_get, sipMethodDescr_descr_get},
+    {0, NULL}
 };
+
+static PyType_Spec sipMethodDescr_spec = {
+    "sip.methoddescriptor",
+    sizeof (sipMethodDescr),
+    0,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    sipMethodDescr_slots
+};
+
 
 
 /*
@@ -204,7 +172,7 @@ static void sipMethodDescr_dealloc(PyObject *self)
 {
     PyObject_GC_UnTrack(self);
     sipMethodDescr_clear(self);
-    Py_TYPE(self)->tp_free(self);
+    PyObject_GC_Del(self);
 }
 
 
@@ -248,57 +216,41 @@ typedef struct _sipVariableDescr {
 /*
  * The type data structure.
  */
-PyTypeObject sipVariableDescr_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "sip.variabledescriptor",   /* tp_name */
-    sizeof (sipVariableDescr),  /* tp_basicsize */
-    0,                      /* tp_itemsize */
-    sipVariableDescr_dealloc,   /* tp_dealloc */
-    0,                      /* tp_print */
-    0,                      /* tp_getattr */
-    0,                      /* tp_setattr */
-    0,                      /* tp_compare */
-    0,                      /* tp_repr */
-    0,                      /* tp_as_number */
-    0,                      /* tp_as_sequence */
-    0,                      /* tp_as_mapping */
-    0,                      /* tp_hash */
-    0,                      /* tp_call */
-    0,                      /* tp_str */
-    0,                      /* tp_getattro */
-    0,                      /* tp_setattro */
-    0,                      /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_GC,  /* tp_flags */
-    0,                      /* tp_doc */
-    sipVariableDescr_traverse,  /* tp_traverse */
-    sipVariableDescr_clear, /* tp_clear */
-    0,                      /* tp_richcompare */
-    0,                      /* tp_weaklistoffset */
-    0,                      /* tp_iter */
-    0,                      /* tp_iternext */
-    0,                      /* tp_methods */
-    0,                      /* tp_members */
-    0,                      /* tp_getset */
-    0,                      /* tp_base */
-    0,                      /* tp_dict */
-    sipVariableDescr_descr_get, /* tp_descr_get */
-    sipVariableDescr_descr_set, /* tp_descr_set */
-    0,                      /* tp_dictoffset */
-    0,                      /* tp_init */
-    0,                      /* tp_alloc */
-    0,                      /* tp_new */
-    0,                      /* tp_free */
-    0,                      /* tp_is_gc */
-    0,                      /* tp_bases */
-    0,                      /* tp_mro */
-    0,                      /* tp_cache */
-    0,                      /* tp_subclasses */
-    0,                      /* tp_weaklist */
-    0,                      /* tp_del */
-    0,                      /* tp_version_tag */
-    0,                      /* tp_finalize */
-    0,                      /* tp_vectorcall */
+PyTypeObject *sipVariableDescr_Type;
+
+static PyType_Slot sipVariableDescr_slots[] = {
+    {Py_tp_dealloc, sipVariableDescr_dealloc},
+    {Py_tp_traverse, sipVariableDescr_traverse},
+    {Py_tp_clear, sipVariableDescr_clear},
+    {Py_tp_descr_get, sipVariableDescr_descr_get},
+    {Py_tp_descr_set, sipVariableDescr_descr_set},
+    {0, NULL}
 };
+
+static PyType_Spec sipVariableDescr_spec = {
+    "sip.variabledescriptor",
+    sizeof (sipVariableDescr),
+    0,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    sipVariableDescr_slots
+};
+
+int sipInitDescriptorTypes(void)
+{
+    sipMethodDescr_Type = PyType_FromSpec(&sipMethodDescr_spec);
+    if (sipMethodDescr_Type == NULL)
+        return -1;
+
+    sipVariableDescr_Type = PyType_FromSpec(&sipVariableDescr_spec);
+    if (sipVariableDescr_Type == NULL)
+    {
+        Py_CLEAR(sipMethodDescr_Type);
+        return -1;
+    }
+
+    return 0;
+}
+
 
 
 /* Forward declarations. */
