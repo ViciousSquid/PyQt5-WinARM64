@@ -8,7 +8,7 @@
 - **Exact upstream runtime:** Python-SIP `6.8.6`, ABI 12.15.0, source tree `sipbuild/module/source/12`.
 - **Target:** `Py_LIMITED_API=0x030C0000` / `cp312-abi3`.
 - **Current phase:** bootstrap and architectural type-system conversion.
-- **Last completed step:** dedicated branch created from the exact starting HEAD.
+- **Last completed step:** descriptor type conversion committed; the `cp312-abi3` ARM64 compile is running against it.
 
 ## Chronology
 
@@ -55,11 +55,30 @@ A dedicated ARM64 GitHub Actions workflow will compile this branch on native Win
 
 ## Tests
 
-Not yet run after the initial bootstrap commit. The first CI run is intentionally the ABI3 compile/smoke-test gate. Its compiler diagnostics will be recorded here and classified by architectural cause rather than suppressed.
+### Baseline compile — 2026-10-06
+
+GitHub Actions ran on native Windows ARM64 with CPython 3.12.10 and MSVC ARM64 14.51.36231 using `Py_LIMITED_API=0x030C0000`.
+
+The compile reached `descriptors.c` and failed on the first static Stable-ABI violation:
+- `sipMethodDescr_Type` and `sipVariableDescr_Type` were static `PyTypeObject` objects.
+- Their initializers therefore required the opaque `struct _typeobject`.
+- Their deallocators accessed `Py_TYPE(self)->tp_free`.
+
+Classification: **architectural type-definition / direct-slot access**, not a missing declaration or suppressible warning.
+
+### Descriptor conversion — in progress
+
+`descriptors.c` now defines both descriptor types through `PyType_Spec`/`PyType_Slot` and creates them with `PyType_FromSpec()`.
+
+The deallocators use `PyObject_GC_Del()` instead of reading `tp_free`.
+
+The internal type handles are now `PyTypeObject *` and `sip_init_library()` calls `sipInitDescriptorTypes()` rather than `PyType_Ready()`.
+
+The resulting build is currently running. Its compiler/test outcome will be recorded here before the next architectural conversion.
 
 ## Remaining blockers
 
-The vendored runtime is still the original SIP 6.8.6 implementation. It is expected to fail the first limited-API compilation until the type foundation and subsequent concrete-layout accesses are converted.
+The main wrapper/metatype implementation still embeds `PyHeapTypeObject`, defines static type objects, and mutates `tp_*`/`nb_*`/`sq_*`/`mp_*`/`am_*` structures. Those are the next major architectural conversion.
 
 ## Rejected approaches
 
@@ -70,4 +89,4 @@ The vendored runtime is still the original SIP 6.8.6 implementation. It is expec
 
 ## Exact next step
 
-Run the dedicated CPython 3.12 ARM64 `cp312-abi3` build against the exact vendored SIP 6.8.6 source, record the first complete compiler failure set, then convert the wrapper metatype/wrapper type to `PyType_Spec` + Stable-ABI type data and re-run the build.
+Finish the current descriptor conversion test run. If it passes compilation, consume the next compiler boundary. If it exposes another static type definition, convert that type to `PyType_Spec`/`PyType_Slot` before touching the wrapper metatype. The wrapper metatype/type-data conversion remains the central milestone.
