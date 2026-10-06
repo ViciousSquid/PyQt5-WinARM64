@@ -90,7 +90,7 @@ PyObject *sipMethodDescr_New(PyMethodDef *pmd)
  */
 PyObject *sipMethodDescr_Copy(PyObject *orig, PyObject *mixin_name)
 {
-    PyObject *descr = PyType_GenericAlloc(&sipMethodDescr_Type, 0);
+    PyObject *descr = PyType_GenericAlloc(sipMethodDescr_Type, 0);
 
     if (descr != NULL)
     {
@@ -283,7 +283,7 @@ PyObject *sipVariableDescr_New(sipVariableDef *vd, const sipTypeDef *td,
  */
 PyObject *sipVariableDescr_Copy(PyObject *orig, PyObject *mixin_name)
 {
-    PyObject *descr = PyType_GenericAlloc(&sipVariableDescr_Type, 0);
+    PyObject *descr = PyType_GenericAlloc(sipVariableDescr_Type, 0);
 
     if (descr != NULL)
     {
@@ -416,5 +416,5 @@ static void sipVariableDescr_dealloc(PyObject *self)
 {
     PyObject_GC_UnTrack(self);
     sipVariableDescr_clear(self);
-    Py_TYPE(self)->tp_free(self);
+    PyObject_GC_Del(self);
 }
