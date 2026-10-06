@@ -1,4 +1,4 @@
-name: PyQt5-sip ARM64 bootstrap
+name: PyQt5-sip Windows ARM64
 
 on:
   push:
@@ -7,6 +7,12 @@ on:
       - ".github/workflows/release.yml"
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing GitHub release to receive and publish the CPython 3.14 SIP wheel"
+        required: false
+        default: "v5.15.11"
+        type: string
 
 env:
   PYQT5_SIP_VERSION: "12.17.0"
@@ -15,9 +21,14 @@ env:
   SIP_VERSION: "6.10.0"
 
 jobs:
-  pyqt5-sip-arm64:
+  build:
+    name: Build PyQt5-sip for CPython 3.14
     runs-on: windows-11-vs2026-arm
+
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
       - name: Check runner architecture
         shell: pwsh
         run: |
@@ -30,7 +41,7 @@ jobs:
       - name: Set up ARM64 CPython
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13.16"
+          python-version: "3.14.8"
           architecture: arm64
 
       - name: Locate ARM64 MSVC toolchain
@@ -49,6 +60,8 @@ jobs:
         run: |
           $arch = python -c "import platform; print(platform.machine())"
           if ($arch -ne "ARM64") { throw "Python is not ARM64: $arch" }
+          $version = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          if ($version -ne "3.14.8") { throw "Unexpected Python version: $version" }
           if ([IntPtr]::Size -ne 8) { throw "Python pointer size is not 64-bit" }
 
       - name: Install pinned SIP build tool
@@ -70,21 +83,36 @@ jobs:
           }
           Write-Host "PyQt5-sip source SHA-256: $actual"
 
-      - name: Build ARM64 wheel
+      - name: Build CPython 3.14 ARM64 wheel
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
           python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_SIP_ARCHIVE --wheel-dir dist
           $wheel = Get-ChildItem dist -Filter "*.whl"
           if ($wheel.Count -ne 1) { throw "Expected exactly one wheel, found $($wheel.Count)" }
           Write-Host "Built wheel: $($wheel.Name)"
-          if ($wheel.Name -notmatch "cp313-cp313-win_arm64\.whl$") {
+          if ($wheel.Name -notmatch "cp314-cp314-win_arm64\.whl$") {
             throw "Unexpected wheel tag: $($wheel.Name)"
           }
 
-      - name: Verify PyQt5-sip extension is ARM64
+      - name: Retag wheel for PyQt5-WinARM64 distribution
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem dist -Filter "*.whl"
+          $wheel = Get-ChildItem dist -Filter "PyQt5_sip-*.whl"
+          if ($wheel.Count -ne 1) { throw "Expected exactly one source wheel, found $($wheel.Count)" }
+          python tools/retag_wheel.py $wheel.FullName --old-name PyQt5-sip --new-name PyQt5-sip-WinARM64
+          $retagged = Get-ChildItem dist -Filter "PyQt5_sip_WinARM64-*.whl"
+          if ($retagged.Count -ne 1) { throw "Expected exactly one retagged wheel, found $($retagged.Count)" }
+          if ($retagged.Name -ne "PyQt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl") {
+            throw "Unexpected release wheel name: $($retagged.Name)"
+          }
+          Write-Host "Release wheel: $($retagged.Name)"
+
+      - name: Verify wheel metadata and native extension
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem dist -Filter "PyQt5_sip_WinARM64-*.whl"
+          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); m=z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); assert 'Name: PyQt5-sip-WinARM64' in m; assert 'Version: 12.17.0' in m; print(m)" $wheel.FullName
           python -m pip install --no-deps $wheel.FullName
           $module = python -c "import PyQt5.sip, pathlib; print(pathlib.Path(PyQt5.sip.__file__))"
           if (-not $module.EndsWith(".pyd")) { throw "PyQt5.sip did not install a native extension: $module" }
@@ -93,4 +121,57 @@ jobs:
           if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
             throw "PyQt5.sip is not an ARM64 PE image"
           }
-          Write-Host "PyQt5.sip: ARM64"
+          Write-Host "PyQt5.sip: ARM64 / CPython 3.14"
+
+      - name: Upload validated wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyqt5-sip-winarm64-cp314
+          path: dist/PyQt5_sip_WinARM64-12.17.0-cp314-cp314-win_arm64.whl
+          if-no-files-found: error
+
+  distribute:
+    name: Attach to v5.15.11 and publish
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    environment: pypi-sip
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Download validated wheel
+        uses: actions/download-artifact@v5
+        with:
+          name: pyqt5-sip-winarm64-cp314
+          path: publish
+
+      - name: Validate release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel="publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl"
+          test -f "$wheel"
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          wheel = Path("publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl")
+          with zipfile.ZipFile(wheel) as z:
+              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+          assert "Name: PyQt5-sip-WinARM64" in metadata
+          assert "Version: 12.17.0" in metadata
+          print(wheel.name, "validated")
+          PY
+
+      - name: Upload wheel to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl
+          overwrite_files: true
+
+      - name: Publish PyQt5-sip-WinARM64 to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: publish
