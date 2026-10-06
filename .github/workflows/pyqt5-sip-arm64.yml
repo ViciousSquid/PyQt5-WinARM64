@@ -1,4 +1,4 @@
-name: PyQt5-sip Windows ARM64
+name: PyQt5-sip ARM64 3.14 build
 
 on:
   push:
@@ -7,12 +7,6 @@ on:
       - ".github/workflows/release.yml"
   pull_request:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Existing GitHub release to receive and publish the CPython 3.14 SIP wheel"
-        required: false
-        default: "v5.15.11"
-        type: string
 
 env:
   PYQT5_SIP_VERSION: "12.17.0"
@@ -129,49 +123,3 @@ jobs:
           name: pyqt5-sip-winarm64-cp314
           path: dist/PyQt5_sip_WinARM64-12.17.0-cp314-cp314-win_arm64.whl
           if-no-files-found: error
-
-  distribute:
-    name: Attach to v5.15.11 and publish
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
-    runs-on: ubuntu-latest
-    environment: pypi-sip
-    permissions:
-      contents: write
-      id-token: write
-
-    steps:
-      - name: Download validated wheel
-        uses: actions/download-artifact@v5
-        with:
-          name: pyqt5-sip-winarm64-cp314
-          path: publish
-
-      - name: Validate release asset
-        shell: bash
-        run: |
-          set -euo pipefail
-          wheel="publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl"
-          test -f "$wheel"
-          python - <<'PY'
-          import zipfile
-          from pathlib import Path
-          wheel = Path("publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl")
-          with zipfile.ZipFile(wheel) as z:
-              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-          assert "Name: PyQt5-sip-WinARM64" in metadata
-          assert "Version: 12.17.0" in metadata
-          print(wheel.name, "validated")
-          PY
-
-      - name: Upload wheel to GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.release_tag }}
-          files: publish/pyqt5_sip_winarm64-12.17.0-cp314-cp314-win_arm64.whl
-          overwrite_files: true
-
-      - name: Publish PyQt5-sip-WinARM64 to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: publish
