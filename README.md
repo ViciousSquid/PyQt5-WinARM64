@@ -125,16 +125,6 @@ The project deliberately validates the stack in stages:
 No wheel is released until every stage passes. The PyPI publish workflow runs `tools/verify_wheel.py` again before it
 uploads anything.
 
-## Releasing
-
-1. Run **PyQt5 ARM64 wheel** on `main` with `release_tag` set to `v<PYQT5_DIST_VERSION>`. After the build and the
-   clean-install tests pass, it creates the GitHub release from the verified wheels and
-   `.github/release-notes/<tag>.md`.
-2. Run **Publish PyQt5 Windows ARM64** with the same tag to upload to PyPI (Trusted Publishing).
-3. Run **ARM64 Release Smoke Test** with `from_pypi` checked to confirm what users actually get from PyPI. It retries
-   for a few minutes, because PyPI's CDN can take a short while to show a new version.
-
-A release created by the workflow does not trigger other workflows, so step 3 is always run by hand.
 
 ## Release history
 
