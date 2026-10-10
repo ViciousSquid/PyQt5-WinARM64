@@ -451,22 +451,27 @@ jobs:
 
           $runtimeDir = Join-Path (Get-Location) "msvc-runtime"
           New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+          # The arm64 CRT folder also carries x64 images for ARM64EC/x64
+          # emulation (vcruntime140_1.dll is x64-only). Native ARM64 code
+          # never loads those, so only ARM64 images are bundled.
           $required = @("msvcp140.dll", "vcruntime140.dll")
           $optional = @("msvcp140_1.dll", "msvcp140_2.dll", "concrt140.dll", "vcruntime140_1.dll")
           foreach ($name in $required + $optional) {
             $source = Join-Path $crt.FullName $name
-            if (Test-Path $source) {
+            if (-not (Test-Path $source)) {
+              if ($required -contains $name) { throw "Required MSVC runtime DLL missing: $source" }
+              Write-Host "${name}: not present, skipped"
+              continue
+            }
+            $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 >nul && link /dump /headers "' + $source + '"')
+            if (($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
               Copy-Item $source $runtimeDir
+              Write-Host "${name}: ARM64, bundled"
             } elseif ($required -contains $name) {
-              throw "Required MSVC runtime DLL missing: $source"
+              throw "Required MSVC runtime DLL is not an ARM64 PE image: $source"
+            } else {
+              Write-Host "${name}: not an ARM64 image, skipped"
             }
-          }
-          foreach ($dll in Get-ChildItem $runtimeDir -Filter "*.dll") {
-            $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 >nul && link /dump /headers "' + $dll.FullName + '"')
-            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
-              throw "$($dll.Name) is not an ARM64 PE image"
-            }
-            Write-Host "$($dll.Name): ARM64"
           }
 
       - name: Rename distribution to PyQt5-WinARM64 and add MSVC runtime
