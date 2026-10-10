@@ -7,7 +7,7 @@ Native Windows ARM64 builds of PyQt5.
 This repository builds and validates PyQt5 against a native Windows ARM64 CPython and a native ARM64 Qt 5.15.19 build.
 
 > [!WARNING]
-> **PyQt5-WinARM64 5.15.11 was broken and has been yanked from PyPI. Use 5.15.11.post1.**
+> **PyQt5-WinARM64 5.15.11 was broken and has been yanked from PyPI. Use [5.15.11.post1](https://github.com/ViciousSquid/PyQt5-WinARM64/releases/tag/v5.15.11.post1).**
 > The 5.15.11 wheel shipped without the Qt runtime (`Qt5Core.dll` and friends), so `import PyQt5.QtCore` failed with
 > `DLL load failed`. If you installed it, upgrade:
 >
