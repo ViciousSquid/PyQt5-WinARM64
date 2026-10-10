@@ -6,11 +6,13 @@ on:
       release_tag:
         description: "Existing GitHub release containing the validated wheels"
         required: true
-        default: "v5.15.11"
+        default: "v5.15.11.post1"
 
 permissions:
   contents: read
 
+# The job names, this file name and the environment names are what PyPI
+# Trusted Publishing is configured against; keep them unchanged.
 jobs:
   publish-pyqt5:
     name: Publish PyQt5-WinARM64
@@ -20,31 +22,27 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Check out publishing helper
+      - name: Check out wheel checker
         uses: actions/checkout@v5
 
       - name: Download wheel from GitHub release
-        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "pyqt5_winarm64-*.whl" --dir publish
+          ls -lh publish
+
+      - name: Verify wheel before upload
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          mkdir -p publish
-          curl -fL --retry 3 --retry-delay 2 \
-            "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl" \
-            -o publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
-          python - <<'PY'
-          import zipfile
-          from pathlib import Path
-          wheel = Path("publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl")
-          with zipfile.ZipFile(wheel) as z:
-              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-          assert "Name: PyQt5-WinARM64" in metadata
-          assert "Version: 5.15.11" in metadata
-          print(wheel.name, "validated")
-          PY
-          ls -lh publish
-          python tools/repair_publish_wheel.py publish/pyqt5_winarm64-5.15.11-cp38-abi3-win_arm64.whl
+          # Refuses a wheel without the bundled Qt runtime, with a broken
+          # .dist-info, or whose RECORD does not match its contents.
+          python3 tools/verify_wheel.py publish/*.whl --expect-version "${RELEASE_TAG#v}"
 
       - name: Publish PyQt5-WinARM64 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -59,31 +57,23 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Check out publishing helper
+      - name: Check out wheel checker
         uses: actions/checkout@v5
 
-      - name: Download wheel from GitHub release
-        shell: bash
+      - name: Download wheels from GitHub release
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          mkdir -p publish
-          curl -fL --retry 3 --retry-delay 2 \
-            "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl" \
-            -o publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
-          python - <<'PY'
-          import zipfile
-          from pathlib import Path
-          wheel = Path("publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl")
-          with zipfile.ZipFile(wheel) as z:
-              metadata = next(z.read(n).decode() for n in z.namelist() if n.endswith(".dist-info/METADATA"))
-          assert "Name: PyQt5-sip-WinARM64" in metadata
-          assert "Version: 12.15.0" in metadata
-          print(wheel.name, "validated")
-          PY
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "pyqt5_sip_winarm64-*.whl" --dir publish
           ls -lh publish
-          python tools/repair_publish_wheel.py publish/pyqt5_sip_winarm64-12.15.0-cp313-cp313-win_arm64.whl
+
+      - name: Verify wheels before upload
+        run: |
+          set -euo pipefail
+          python3 tools/verify_wheel.py publish/*.whl
 
       - name: Publish PyQt5-sip-WinARM64 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

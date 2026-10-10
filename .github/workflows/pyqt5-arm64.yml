@@ -7,24 +7,149 @@ on:
       - ".github/workflows/release.yml"
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "After every check passes, create this GitHub release from the verified wheels (main only; leave empty to just build and test)"
+        required: false
+        default: ""
   workflow_call:
+
+permissions:
+  contents: read
 
 env:
   PYQT5_VERSION: "5.15.11"
+  # Published distribution version. 5.15.11 shipped without the Qt runtime;
+  # 5.15.11.post1 is the same PyQt5 source with Qt actually bundled.
+  PYQT5_DIST_VERSION: "5.15.11.post1"
   PYQT5_ARCHIVE: "PyQt5-5.15.11.tar.gz"
   PYQT5_SHA256: "fda45743ebb4a27b4b1a51c6d8ef455c4c1b5d610c90d2934c7802b5c1557c52"
+  # SIP 6.10 generates Stable ABI code for CPython 3.9 and later.
+  PYQT5_WHEEL_TAG: "cp39-abi3-win_arm64"
   PYQT5_SIP_VERSION: "12.17.0"
   PYQT5_SIP_ARCHIVE: "pyqt5_sip-12.17.0.tar.gz"
   PYQT5_SIP_SHA256: "682dadcdbd2239af9fdc0c0628e2776b820e128bec88b49b8d692fe682f90b4f"
   SIP_VERSION: "6.10.0"
   PYQT_BUILDER_VERSION: "1.17.0"
+  BUILD_PYTHON_VERSION: "3.14.8"
   QT_VERSION: "5.15.19"
   QT_SHA256: "51e91c73abacab81e64efd01bf95794e79c0e605ad80947a024769f0dd620a32"
   QT_CONFIGURE_REV: "process-v3"
   WINFLEXBISON_VERSION: "2.5.25"
 
 jobs:
-  pyqt5-arm64:
+  sip-wheels:
+    name: PyQt5-sip wheel (CPython ${{ matrix.python }})
+    runs-on: windows-11-vs2026-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.13.16"
+            tag: cp313
+          - python: "3.14.8"
+            tag: cp314
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Check runner architecture
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $proc = $env:PROCESSOR_ARCHITECTURE
+          if ($arch -ne "Arm64" -or $proc -ne "ARM64") {
+            throw "Expected native ARM64 Windows runner: RuntimeInformation=$arch PROCESSOR_ARCHITECTURE=$proc"
+          }
+
+      - name: Set up ARM64 CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: arm64
+
+      - name: Verify ARM64 CPython
+        shell: pwsh
+        run: |
+          $arch = python -c "import platform; print(platform.machine())"
+          if ($arch -ne "ARM64") { throw "Python is not ARM64: $arch" }
+          $version = python -c "import platform; print(platform.python_version())"
+          if ($version -ne "${{ matrix.python }}") { throw "Unexpected Python version: $version" }
+
+      - name: Locate ARM64 MSVC toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if (-not $install) { throw "No Visual Studio installation with the ARM64 MSVC toolchain was found" }
+          $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found at $vsdevcmd" }
+          "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
+
+      - name: Install pinned SIP build tool
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install --upgrade pip
+          python -m pip install "sip==$env:SIP_VERSION" setuptools
+          $version = python -m pip show sip | Select-String "^Version:" | ForEach-Object { $_.ToString().Split(":", 2)[1].Trim() }
+          if ($version -ne $env:SIP_VERSION) { throw "Unexpected SIP build-tool version: $version" }
+
+      - name: Download pinned PyQt5-sip source
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://files.pythonhosted.org/packages/source/p/pyqt5-sip/$env:PYQT5_SIP_ARCHIVE" -OutFile $env:PYQT5_SIP_ARCHIVE
+          $actual = (Get-FileHash $env:PYQT5_SIP_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PYQT5_SIP_SHA256) {
+            throw "PyQt5-sip source SHA-256 mismatch: expected $env:PYQT5_SIP_SHA256, got $actual"
+          }
+
+      - name: Build PyQt5-sip wheel
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_SIP_ARCHIVE --wheel-dir sip-build
+          $wheel = @(Get-ChildItem sip-build -Filter "*.whl")
+          if ($wheel.Count -ne 1) { throw "Expected exactly one wheel, found $($wheel.Count)" }
+          $expected = "^pyqt5_sip-$([regex]::Escape($env:PYQT5_SIP_VERSION))-${{ matrix.tag }}-${{ matrix.tag }}-win_arm64\.whl$"
+          if ($wheel[0].Name -notmatch $expected) { throw "Unexpected wheel: $($wheel[0].Name)" }
+          Write-Host "Built: $($wheel[0].Name)"
+
+      - name: Rename distribution to PyQt5-sip-WinARM64
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $wheel = Get-ChildItem sip-build -Filter "*.whl"
+          python tools/retag_wheel.py $wheel.FullName --old-name PyQt5-sip --new-name PyQt5-sip-WinARM64 --output-dir dist
+
+      - name: Verify wheel
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $wheel = @(Get-ChildItem dist -Filter "pyqt5_sip_winarm64-*-${{ matrix.tag }}-${{ matrix.tag }}-win_arm64.whl")
+          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5-sip-WinARM64 wheel, found $($wheel.Count)" }
+          python tools/verify_wheel.py $wheel[0].FullName --expect-version $env:PYQT5_SIP_VERSION
+          python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('sip-inspect')" $wheel[0].FullName
+          $binaries = @(Get-ChildItem sip-inspect -Recurse -File -Filter "*.pyd")
+          if (-not $binaries) { throw "No native extension in SIP wheel" }
+          foreach ($binary in $binaries) {
+            $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 >nul && link /dump /headers "' + $binary.FullName + '"')
+            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+              throw "$($binary.Name) is not an ARM64 PE image"
+            }
+            Write-Host "$($binary.Name): ARM64"
+          }
+
+      - name: Upload SIP wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: sip-${{ matrix.tag }}
+          path: dist/pyqt5_sip_winarm64-*.whl
+          if-no-files-found: error
+
+  pyqt5-wheel:
+    name: PyQt5 wheel with bundled Qt
     runs-on: windows-11-vs2026-arm
     steps:
       - name: Check out repository
@@ -42,7 +167,7 @@ jobs:
       - name: Set up ARM64 CPython
         uses: actions/setup-python@v6
         with:
-          python-version: "3.14.8"
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
           architecture: arm64
 
       - name: Verify ARM64 CPython
@@ -62,6 +187,7 @@ jobs:
           $vsdevcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
           if (-not (Test-Path $vsdevcmd)) { throw "VsDevCmd.bat not found at $vsdevcmd" }
           "VSDEVCMD=$vsdevcmd" >> $env:GITHUB_ENV
+          "VS_INSTALL=$install" >> $env:GITHUB_ENV
 
       - name: Restore Qt ARM64 build
         uses: actions/cache@v4
@@ -78,6 +204,8 @@ jobs:
           $qtRoot = "C:\Qt\$env:QT_VERSION\arm64"
           $qmake = Join-Path $qtRoot "bin\qmake.exe"
           if (-not (Test-Path $qmake)) { throw "Qt qmake not found: $qmake" }
+          # Qt is put on PATH for the build only. The clean-install test runs
+          # in a separate job on a fresh runner that never has this Qt.
           $env:PATH = "$(Split-Path $qmake);$env:PATH"
           "PATH=$(Split-Path $qmake);$env:PATH" >> $env:GITHUB_ENV
           & $qmake -query
@@ -115,35 +243,27 @@ jobs:
       - name: Install pinned PyQt build tools
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install --upgrade pip
-          python -m pip install "sip==$env:SIP_VERSION" "PyQt-builder==$env:PYQT_BUILDER_VERSION"
+          python -m pip install "sip==$env:SIP_VERSION" "PyQt-builder==$env:PYQT_BUILDER_VERSION" setuptools
           $sip = python -m pip show sip | Select-String "^Version:" | ForEach-Object { $_.ToString().Split(":", 2)[1].Trim() }
           $builder = python -m pip show PyQt-builder | Select-String "^Version:" | ForEach-Object { $_.ToString().Split(":", 2)[1].Trim() }
           if ($sip -ne $env:SIP_VERSION) { throw "Unexpected SIP version: $sip" }
           if ($builder -ne $env:PYQT_BUILDER_VERSION) { throw "Unexpected PyQt-builder version: $builder" }
 
-      - name: Download pinned PyQt5-sip source
+      - name: Install PyQt5-sip for the binding build
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           Invoke-WebRequest -Uri "https://files.pythonhosted.org/packages/source/p/pyqt5-sip/$env:PYQT5_SIP_ARCHIVE" -OutFile $env:PYQT5_SIP_ARCHIVE
           $actual = (Get-FileHash $env:PYQT5_SIP_ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $env:PYQT5_SIP_SHA256) {
             throw "PyQt5-sip source SHA-256 mismatch: expected $env:PYQT5_SIP_SHA256, got $actual"
           }
-
-      - name: Build PyQt5-sip ARM64 wheel
-        shell: pwsh
-        run: |
-          python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_SIP_ARCHIVE --wheel-dir wheelhouse
-          $wheel = Get-ChildItem wheelhouse -Filter "*.whl" | Where-Object { $_.Name -match "^PyQt5_sip-.*-cp314-cp314-win_arm64\.whl$" }
-          if ($wheel.Count -ne 1) { throw "Expected exactly one ARM64 PyQt5-sip wheel, found $($wheel.Count)" }
-          Write-Host "Built: $($wheel.Name)"
-
-      - name: Install PyQt5-sip for binding build
-        shell: pwsh
-        run: |
-          $wheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip-*.whl"
-          python -m pip install --no-deps $wheel.FullName
+          python -m pip wheel --no-deps --no-build-isolation $env:PYQT5_SIP_ARCHIVE --wheel-dir sip-build
+          $wheel = @(Get-ChildItem sip-build -Filter "*.whl")
+          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5-sip wheel, found $($wheel.Count)" }
+          python -m pip install --no-deps $wheel[0].FullName
 
       - name: Download pinned PyQt5 source
         shell: pwsh
@@ -181,19 +301,19 @@ jobs:
           # on this ARM64 build that stream can exceed pip's decoder memory.
           # sip-wheel runs the same PyQt-builder backend without that wrapper.
           $build = Join-Path $env:RUNNER_TEMP "pyqt5-build"
-          $wheelDir = Join-Path (Get-Location) "dist"
+          $wheelDir = Join-Path (Get-Location) "unbundled"
           New-Item -ItemType Directory -Force -Path $wheelDir | Out-Null
           $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && cd /d "' + $source + '" && python -m sipbuild.tools.wheel --verbose --confirm-license --build-dir "' + $build + '"'
           cmd /c $command
           if ($LASTEXITCODE -ne 0) { throw "PyQt5 sip-wheel build failed" }
-          $wheel = Get-ChildItem $source -Filter "PyQt5-*.whl"
+          $wheel = @(Get-ChildItem $source -Filter "PyQt5-*.whl")
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel in source directory, found $($wheel.Count)" }
-          Move-Item $wheel.FullName $wheelDir -Force
-          $wheel = Get-ChildItem $wheelDir -Filter "PyQt5-*.whl"
+          Move-Item $wheel[0].FullName $wheelDir -Force
+          $wheel = @(Get-ChildItem $wheelDir -Filter "PyQt5-*.whl")
           if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5 wheel, found $($wheel.Count)" }
-          Write-Host "Built: $($wheel.Name)"
-          if ($wheel.Name -notmatch "cp38-abi3-win_arm64\.whl$") {
-          throw "Unexpected PyQt5 wheel tag: $($wheel.Name)"
+          Write-Host "Built: $($wheel[0].Name)"
+          if ($wheel[0].Name -ne "PyQt5-$env:PYQT5_VERSION-$env:PYQT5_WHEEL_TAG.whl") {
+            throw "Unexpected PyQt5 wheel: $($wheel[0].Name) (expected tag $env:PYQT5_WHEEL_TAG)"
           }
 
       - name: Prepare Qt runtime dependencies for bundling
@@ -247,7 +367,8 @@ jobs:
         run: |
           $qtDir = "C:\Qt\$env:QT_VERSION\arm64"
           $qtBin = Join-Path $qtDir "bin"
-          $wheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
+          $wheel = @(Get-ChildItem unbundled -Filter "PyQt5-*.whl")
+          if ($wheel.Count -ne 1) { throw "Expected exactly one unbundled PyQt5 wheel, found $($wheel.Count)" }
 
           # pyqt-bundle 1.17.0 lists opengl32sw.dll as a QtGui dependency,
           # but this source-built ARM64 qtbase installation does not include
@@ -269,11 +390,22 @@ jobs:
             }
           }
 
+          # pyqt-bundle always writes the bundled wheel to the *current
+          # directory* (with the Qt version as a build tag), never next to the
+          # input. 5.15.11 was released without Qt because the unbundled wheel
+          # left in dist\ was picked up instead. Run it in an empty directory
+          # and take the result from there.
+          $bundledDir = Join-Path (Get-Location) "bundled"
+          Remove-Item $bundledDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $bundledDir | Out-Null
           $bundleLog = Join-Path $env:RUNNER_TEMP "pyqt-bundle.log"
-          & pyqt-bundle --verbose --ignore-missing --qt-dir $qtDir $wheel.FullName 2>&1 |
-            Tee-Object -FilePath $bundleLog
-          if ($LASTEXITCODE -ne 0) {
-            throw "pyqt-bundle failed"
+          Push-Location $bundledDir
+          try {
+            & pyqt-bundle --verbose --ignore-missing --qt-dir $qtDir $wheel[0].FullName 2>&1 |
+              Tee-Object -FilePath $bundleLog
+            if ($LASTEXITCODE -ne 0) { throw "pyqt-bundle failed" }
+          } finally {
+            Pop-Location
           }
 
           $unexpectedMissing = Select-String -Path $bundleLog -Pattern "Ignoring missing '([^']+)'" |
@@ -291,65 +423,199 @@ jobs:
             Write-Host "opengl32sw.dll is absent; continuing without the optional Mesa software OpenGL fallback."
           }
 
-          $bundled = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          if ($bundled.Count -ne 1) { throw "Expected exactly one bundled PyQt5 wheel, found $($bundled.Count)" }
-          Write-Host "Bundled wheel: $($bundled.Name)"
-
-      - name: Retag wheels for PyPI
-        shell: pwsh
-        run: |
-          $pyqtWheel = Get-ChildItem dist -Filter "PyQt5-*.whl"
-          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip-*.whl"
-          python tools/retag_wheel.py $pyqtWheel.FullName --old-name PyQt5 --new-name PyQt5-WinARM64 --replace-requires PyQt5-sip PyQt5-sip-WinARM64
-          python tools/retag_wheel.py $sipWheel.FullName --old-name PyQt5-sip --new-name PyQt5-sip-WinARM64
-          Get-ChildItem dist -Filter "*.whl"
-          Get-ChildItem wheelhouse -Filter "*.whl"
-
-      - name: Verify wheel metadata
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade wheel
-          python -c "import zipfile,glob; p=glob.glob('dist/*.whl')[0]; z=zipfile.ZipFile(p); m=z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); assert 'Name: PyQt5-WinARM64' in m; assert 'PyQt5-sip-WinARM64' in m; print(m)"
-          python -c "import zipfile,glob; p=glob.glob('wheelhouse/*.whl')[0]; z=zipfile.ZipFile(p); m=z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); assert 'Name: PyQt5-sip-WinARM64' in m; print(m)"
-
-      - name: Verify wheel contents are ARM64
-        shell: pwsh
-        run: |
-          $wheel = Get-ChildItem dist -Filter "*.whl" |
-            Where-Object { $_.Name -match "^PyQt5[_-]WinARM64-.*\.whl$" }
-          if ($wheel.Count -ne 1) {
-            throw "Expected exactly one retagged PyQt5-WinARM64 wheel, found $($wheel.Count)"
+          $expected = "PyQt5-$env:PYQT5_VERSION-$env:QT_VERSION-$env:PYQT5_WHEEL_TAG.whl"
+          $bundled = @(Get-ChildItem $bundledDir -Filter "*.whl")
+          if ($bundled.Count -ne 1 -or $bundled[0].Name -ne $expected) {
+            throw "Expected exactly $expected in $bundledDir, found: $($bundled.Name -join ', ')"
           }
-          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print('\n'.join(n for n in z.namelist() if n.lower().endswith(('.pyd','.dll'))))" $wheel.FullName
-          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); z.extractall('wheel-inspect')" $wheel.FullName
-          $binaries = Get-ChildItem wheel-inspect -Recurse -File | Where-Object { $_.Extension -in ".pyd",".dll" }
-          if (-not $binaries) { throw "No native binaries found in bundled wheel" }
-          foreach ($binary in $binaries) {
-            $command = 'call "' + $env:VSDEVCMD + '" -arch=arm64 && link /dump /headers "' + $binary.FullName + '"'
-            $dump = cmd /c $command
-            if ($LASTEXITCODE -ne 0) { throw "PE inspection failed for $($binary.Name)" }
-            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
-              throw "$($binary.Name) is not an ARM64 PE image"
+          if ($bundled[0].Length -le $wheel[0].Length * 2) {
+            throw "Bundled wheel ($($bundled[0].Length) bytes) is not meaningfully larger than the unbundled wheel ($($wheel[0].Length) bytes)"
+          }
+          Write-Host "Bundled wheel: $($bundled[0].Name) ($($bundled[0].Length) bytes, unbundled $($wheel[0].Length) bytes)"
+
+      - name: Collect ARM64 MSVC runtime
+        shell: pwsh
+        run: |
+          # pyqt-bundle only bundles the MSVC C++ runtime for win32/win_amd64.
+          # Qt5Core.dll needs msvcp140.dll, which a clean Windows on ARM PC
+          # does not necessarily have, so ship the ARM64 redistributable DLLs
+          # from this Visual Studio installation next to the Qt DLLs.
+          $redistRoot = Join-Path $env:VS_INSTALL "VC\Redist\MSVC"
+          $crt = Get-ChildItem $redistRoot -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' } |
+            Sort-Object { [version]$_.Name } -Descending |
+            ForEach-Object { Get-ChildItem (Join-Path $_.FullName "arm64") -Directory -Filter "Microsoft.VC14*.CRT" -ErrorAction SilentlyContinue } |
+            Select-Object -First 1
+          if (-not $crt) { throw "ARM64 MSVC CRT redistributable not found under $redistRoot" }
+          Write-Host "MSVC runtime source: $($crt.FullName)"
+
+          $runtimeDir = Join-Path (Get-Location) "msvc-runtime"
+          New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+          $required = @("msvcp140.dll", "vcruntime140.dll")
+          $optional = @("msvcp140_1.dll", "msvcp140_2.dll", "concrt140.dll", "vcruntime140_1.dll")
+          foreach ($name in $required + $optional) {
+            $source = Join-Path $crt.FullName $name
+            if (Test-Path $source) {
+              Copy-Item $source $runtimeDir
+            } elseif ($required -contains $name) {
+              throw "Required MSVC runtime DLL missing: $source"
             }
           }
-          Write-Host "All bundled native binaries are ARM64."
+          foreach ($dll in Get-ChildItem $runtimeDir -Filter "*.dll") {
+            $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 >nul && link /dump /headers "' + $dll.FullName + '"')
+            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+              throw "$($dll.Name) is not an ARM64 PE image"
+            }
+            Write-Host "$($dll.Name): ARM64"
+          }
 
-      - name: Clean ARM64 installation and QApplication smoke test
+      - name: Rename distribution to PyQt5-WinARM64 and add MSVC runtime
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem dist -Filter "PyQt5_WinARM64-*.whl"
-          $sipWheel = Get-ChildItem wheelhouse -Filter "PyQt5_sip_WinARM64-*.whl"
-          python -m venv smoke-venv
-          & ".\smoke-venv\Scripts\python.exe" -m pip install --upgrade pip
-          & ".\smoke-venv\Scripts\python.exe" -m pip install --no-index --find-links (Resolve-Path dist) --find-links (Resolve-Path wheelhouse) $sipWheel.FullName $wheel.FullName
-          & ".\smoke-venv\Scripts\python.exe" -c "import platform; assert platform.machine() == 'ARM64'; from PyQt5.QtCore import QT_VERSION_STR; from PyQt5.QtWidgets import QApplication; app=QApplication([]); print('PyQt5', QT_VERSION_STR, 'QApplication OK')"
-          if ($LASTEXITCODE -ne 0) { throw "ARM64 QApplication smoke test failed" }
+          $PSNativeCommandUseErrorActionPreference = $true
+          $bundled = Get-ChildItem bundled -Filter "*.whl"
+          $retag = @(
+            "tools/retag_wheel.py", $bundled.FullName,
+            "--old-name", "PyQt5",
+            "--new-name", "PyQt5-WinARM64",
+            "--new-version", $env:PYQT5_DIST_VERSION,
+            "--drop-build-tag",
+            "--output-dir", "dist",
+            "--replace-requires", "PyQt5-sip", "PyQt5-sip-WinARM64"
+          )
+          foreach ($dll in Get-ChildItem msvc-runtime -Filter "*.dll") {
+            $retag += @("--add-file", $dll.FullName, "PyQt5/Qt5/bin/$($dll.Name)")
+          }
+          python @retag
 
-      - name: Upload validated wheels
+      - name: Verify wheel contents
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $wheel = @(Get-ChildItem dist -Filter "pyqt5_winarm64-*.whl")
+          if ($wheel.Count -ne 1) { throw "Expected exactly one PyQt5-WinARM64 wheel, found $($wheel.Count)" }
+          if ($wheel[0].Name -ne "pyqt5_winarm64-$env:PYQT5_DIST_VERSION-$env:PYQT5_WHEEL_TAG.whl") {
+            throw "Unexpected wheel name: $($wheel[0].Name)"
+          }
+          python tools/verify_wheel.py $wheel[0].FullName --expect-version $env:PYQT5_DIST_VERSION
+          python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('wheel-inspect')" $wheel[0].FullName
+          $binaries = @(Get-ChildItem wheel-inspect -Recurse -File | Where-Object { $_.Extension -in ".pyd",".dll" })
+          Write-Host "Native binaries in wheel: $($binaries.Count)"
+          foreach ($binary in $binaries) {
+            $dump = cmd /c ('call "' + $env:VSDEVCMD + '" -arch=arm64 >nul && link /dump /headers "' + $binary.FullName + '"')
+            if (-not ($dump -join [Environment]::NewLine).Contains("AA64 machine (ARM64)")) {
+              throw "$($binary.FullName) is not an ARM64 PE image"
+            }
+          }
+          Write-Host "All $($binaries.Count) bundled native binaries are ARM64."
+
+      - name: Upload PyQt5 wheel
         uses: actions/upload-artifact@v4
         with:
-          name: pyqt5-win-arm64
-          path: |
-            dist/PyQt5_WinARM64-*.whl
-            wheelhouse/PyQt5_sip_WinARM64-*.whl
+          name: pyqt5-wheel
+          path: dist/pyqt5_winarm64-*.whl
           if-no-files-found: error
+
+  verify:
+    name: Clean install test (CPython ${{ matrix.python }})
+    needs: [sip-wheels, pyqt5-wheel]
+    runs-on: windows-11-vs2026-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.13.16", "3.14.8"]
+    steps:
+      - name: Check out smoke test
+        uses: actions/checkout@v5
+
+      - name: Set up ARM64 CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: arm64
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: wheels
+          merge-multiple: true
+
+      - name: Make sure no Qt installation is reachable
+        shell: pwsh
+        run: |
+          # This job runs on a fresh runner with no Qt cache restored. Fail
+          # loudly if any Qt5Core.dll is reachable, because that is exactly
+          # what hid the missing runtime in 5.15.11.
+          foreach ($dir in $env:PATH.Split([IO.Path]::PathSeparator)) {
+            if ($dir -and (Test-Path (Join-Path $dir "Qt5Core.dll"))) {
+              throw "Qt5Core.dll is reachable on PATH via $dir; the clean-install test would not be meaningful"
+            }
+          }
+          if (Test-Path "C:\Qt") { throw "C:\Qt exists on this runner; the clean-install test would not be meaningful" }
+          Get-ChildItem wheels | Format-Table Name, Length
+
+      - name: Install by name from the built wheels
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m venv clean-venv
+          $py = ".\clean-venv\Scripts\python.exe"
+          & $py -m pip install --upgrade pip
+          # Let pip resolve PyQt5-sip-WinARM64 through the PyQt5 wheel's
+          # metadata, exactly as a user's install from PyPI would.
+          & $py -m pip install --no-index --find-links (Resolve-Path wheels) "PyQt5-WinARM64==$env:PYQT5_DIST_VERSION"
+          & $py -m pip check
+          & $py -m pip list
+
+      - name: Run PyQt5 smoke application
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          & ".\clean-venv\Scripts\python.exe" tools\pyqt5_smoke.py
+
+  github-release:
+    name: Create GitHub release ${{ inputs.release_tag }}
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@v5
+
+      - name: Download verified wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: wheels
+          merge-multiple: true
+
+      - name: Re-verify wheels
+        run: |
+          set -euo pipefail
+          python3 tools/verify_wheel.py wheels/pyqt5_winarm64-*.whl --expect-version "$PYQT5_DIST_VERSION"
+          python3 tools/verify_wheel.py wheels/pyqt5_sip_winarm64-*.whl --expect-version "$PYQT5_SIP_VERSION"
+          ls -l wheels
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" != "v$PYQT5_DIST_VERSION" ]]; then
+            echo "Release tag $RELEASE_TAG does not match v$PYQT5_DIST_VERSION" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+          notes=".github/release-notes/$RELEASE_TAG.md"
+          test -f "$notes"
+          gh release create "$RELEASE_TAG" wheels/*.whl \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PyQt5-WinARM64 $PYQT5_DIST_VERSION" \
+            --notes-file "$notes" \
+            --latest

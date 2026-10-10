@@ -7,20 +7,29 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "GitHub release tag to test"
+        description: "Release tag to test, e.g. v5.15.11.post1"
         required: true
-        default: "v5.15.11"
+        default: "v5.15.11.post1"
+      from_pypi:
+        description: "Install from PyPI instead of the GitHub release assets"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   smoke-test:
-    name: PyQt5 ARM64 release smoke test
+    name: Release smoke test (CPython ${{ matrix.python }})
     runs-on: windows-11-vs2026-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.13.16", "3.14.8"]
 
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      FROM_PYPI: ${{ inputs.from_pypi || false }}
 
     steps:
       - name: Check out smoke test
@@ -29,78 +38,42 @@ jobs:
       - name: Set up ARM64 CPython
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13.16"
+          python-version: ${{ matrix.python }}
           architecture: arm64
 
-      - name: Verify native ARM64 Python
+      - name: Make sure no Qt installation is reachable
         shell: pwsh
         run: |
-          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-          $pythonArch = python -c "import platform; print(platform.machine())"
-
-          if ($arch -ne "Arm64") {
-            throw "Runner is not native ARM64: $arch"
+          foreach ($dir in $env:PATH.Split([IO.Path]::PathSeparator)) {
+            if ($dir -and (Test-Path (Join-Path $dir "Qt5Core.dll"))) {
+              throw "Qt5Core.dll is reachable on PATH via $dir"
+            }
           }
 
-          if ($env:PROCESSOR_ARCHITECTURE -ne "ARM64") {
-            throw "PROCESSOR_ARCHITECTURE is not ARM64: $env:PROCESSOR_ARCHITECTURE"
-          }
-
-          if ($pythonArch -ne "ARM64") {
-            throw "Python is not ARM64: $pythonArch"
-          }
-
-          if ([IntPtr]::Size -ne 8) {
-            throw "Python is not 64-bit"
-          }
-
-          Write-Host "Native Windows ARM64 + ARM64 CPython verified."
-
-      - name: Download release wheels
+      - name: Install release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          New-Item -ItemType Directory -Force -Path release-wheels | Out-Null
-
-          gh release download "$env:RELEASE_TAG" `
-            --repo "$env:GITHUB_REPOSITORY" `
-            --pattern "pyqt5_winarm64-*.whl" `
-            --pattern "pyqt5_sip_winarm64-*.whl" `
-            --dir release-wheels `
-            --clobber
-
-          $pyqt = @(Get-ChildItem release-wheels -Filter "pyqt5_winarm64-*.whl")
-          $sip = @(Get-ChildItem release-wheels -Filter "pyqt5_sip_winarm64-*.whl")
-
-          if ($pyqt.Count -ne 1) {
-            throw "Expected exactly one PyQt5-WinARM64 wheel, found $($pyqt.Count)"
-          }
-
-          if ($sip.Count -ne 1) {
-            throw "Expected exactly one PyQt5-sip-WinARM64 wheel, found $($sip.Count)"
-          }
-
-          Write-Host "PyQt5 wheel: $($pyqt[0].Name)"
-          Write-Host "SIP wheel:   $($sip[0].Name)"
-
-      - name: Install exact release wheels
-        shell: pwsh
-        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m venv release-smoke-venv
-
-          & ".\release-smoke-venv\Scripts\python.exe" `
-            -m pip install `
-            --no-index `
-            --find-links (Resolve-Path release-wheels) `
-            (Get-ChildItem release-wheels -Filter "pyqt5_sip_winarm64-*.whl").FullName `
-            (Get-ChildItem release-wheels -Filter "pyqt5_winarm64-*.whl").FullName
+          $py = ".\release-smoke-venv\Scripts\python.exe"
+          & $py -m pip install --upgrade pip
+          $version = $env:RELEASE_TAG.TrimStart("v")
+          if ($env:FROM_PYPI -eq "true") {
+            & $py -m pip install --no-cache-dir --only-binary=:all: "PyQt5-WinARM64==$version"
+          } else {
+            New-Item -ItemType Directory -Force -Path release-wheels | Out-Null
+            gh release download "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" `
+              --pattern "pyqt5_winarm64-*.whl" --pattern "pyqt5_sip_winarm64-*.whl" `
+              --dir release-wheels --clobber
+            & $py -m pip install --no-index --find-links (Resolve-Path release-wheels) "PyQt5-WinARM64==$version"
+          }
+          & $py -m pip check
+          & $py -m pip list
 
       - name: Run PyQt5 ARM64 smoke application
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           & ".\release-smoke-venv\Scripts\python.exe" tools\pyqt5_smoke.py
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "PyQt5-WinARM64 release smoke test failed"
-          }
