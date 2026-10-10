@@ -7,15 +7,21 @@ Native Windows ARM64 builds of PyQt5.
 This repository builds and validates PyQt5 against a native Windows ARM64 CPython and a native ARM64 Qt 5.15.19 build.
 
 > [!WARNING]
-> **PyQt5-WinARM64 5.15.11 is broken: upgrade to 5.15.11.post1.**
-> The 5.15.11 wheel was published without the Qt runtime (`Qt5Core.dll` and friends), so `import PyQt5.QtCore` fails with
-> `DLL load failed` unless a native ARM64 Qt happens to be on `PATH`. The wheels attached to the 5.15.11 GitHub release
-> also had malformed metadata that makes pip crash with `InvalidVersion: 'info'`. Upgrade with
-> `python -m pip install --upgrade PyQt5-WinARM64`. See [Known issues](#known-issues-in-51511) for clean-up steps.
+> **PyQt5-WinARM64 5.15.11 was broken and has been yanked from PyPI. Use 5.15.11.post1.**
+> The 5.15.11 wheel shipped without the Qt runtime (`Qt5Core.dll` and friends), so `import PyQt5.QtCore` failed with
+> `DLL load failed`. If you installed it, upgrade:
+>
+> ```powershell
+> python -m pip install --upgrade PyQt5-WinARM64
+> ```
+>
+> If you installed the wheels attached to the old 5.15.11 GitHub release and pip now crashes with
+> `InvalidVersion: 'info'`, see [Known issues](#known-issues-in-51511) first.
 
 ## Current release
 
-**PyQt5-WinARM64 5.15.11.post1**
+**PyQt5-WinARM64 5.15.11.post1** ([PyPI](https://pypi.org/project/PyQt5-WinARM64/) ·
+[GitHub release](https://github.com/ViciousSquid/PyQt5-WinARM64/releases/tag/v5.15.11.post1))
 
 | Wheel | For |
 | --- | --- |
@@ -33,13 +39,20 @@ specific to each CPython version, and pip picks the right one automatically.
 
 ## Installation
 
-Install the native ARM64 distribution from PyPI:
+You need a **native ARM64** CPython 3.13 or 3.14 (the "ARM64" installer from python.org). Check with:
+
+```powershell
+python -c "import platform; print(platform.machine())"   # must print ARM64
+```
+
+Then install from PyPI:
 
 ```powershell
 python -m pip install PyQt5-WinARM64
 ```
 
-PyQt5-sip is pulled in as the matching `PyQt5-sip-WinARM64` dependency.
+PyQt5-sip is pulled in as the matching `PyQt5-sip-WinARM64` dependency. Nothing else is required: Qt and the Visual C++
+runtime are inside the wheel.
 
 The Python import namespace remains the standard PyQt5 namespace:
 
@@ -49,18 +62,35 @@ from PyQt5.QtWidgets import QApplication
 app = QApplication([])
 ```
 
-The distribution is specifically for **native Windows ARM64** Python. It is not an x64 compatibility build.
+The distribution is specifically for **native Windows ARM64** Python. It is not an x64 compatibility build. Do not install
+it alongside the upstream `PyQt5` package in the same environment; both provide the `PyQt5` import package.
+
+To use it from a `requirements.txt` that must also work on other platforms, select it with environment markers:
+
+```text
+PyQt5==5.15.11; platform_machine != "ARM64"
+PyQt5-WinARM64==5.15.11.post1; sys_platform == "win32" and platform_machine == "ARM64"
+```
+
+### Checking an installation
+
+```powershell
+python -c "import PyQt5, PyQt5.QtCore as c; print(c.PYQT_VERSION_STR, c.QT_VERSION_STR, c.QLibraryInfo.location(c.QLibraryInfo.PrefixPath))"
+```
+
+This should print `5.15.11 5.15.19` followed by a path ending in `site-packages/PyQt5/Qt5`. Any other prefix means Qt
+is being picked up from somewhere other than the wheel.
 
 ## Known issues in 5.15.11
 
-5.15.11 should not be used.
+5.15.11 is yanked from PyPI and must not be used.
 
 - **No Qt runtime (PyPI and GitHub release).** pyqt-bundle writes its output to the current directory, and the release
   workflow packaged the unbundled wheel it found in `dist\` instead. The smoke test still passed because the build
   runner's own Qt was on `PATH`, and a failing `pip install` in that step was not checked.
-- **Malformed metadata (GitHub release assets only).** The wheels attached to the 5.15.11 GitHub release contain
-  `pyqt5_winarm64-info.dist-info` and `pyqt5_sip_winarm64-info.dist-info`. pip installs them, but then crashes with
-  `InvalidVersion: 'info'` whenever it lists installed packages. The PyPI copies of 5.15.11 do not have this problem.
+- **Malformed metadata (old GitHub release assets only).** The wheels that were attached to the 5.15.11 GitHub release
+  contain `pyqt5_winarm64-info.dist-info` and `pyqt5_sip_winarm64-info.dist-info`. pip installs them, but then crashes
+  with `InvalidVersion: 'info'` whenever it lists installed packages. The PyPI copies of 5.15.11 do not have this problem.
 
 To recover:
 
@@ -101,7 +131,17 @@ uploads anything.
    clean-install tests pass, it creates the GitHub release from the verified wheels and
    `.github/release-notes/<tag>.md`.
 2. Run **Publish PyQt5 Windows ARM64** with the same tag to upload to PyPI (Trusted Publishing).
-3. Run **ARM64 Release Smoke Test** with `from_pypi` checked to confirm what users actually get from PyPI.
+3. Run **ARM64 Release Smoke Test** with `from_pypi` checked to confirm what users actually get from PyPI. It retries
+   for a few minutes, because PyPI's CDN can take a short while to show a new version.
+
+A release created by the workflow does not trigger other workflows, so step 3 is always run by hand.
+
+## Release history
+
+| Version | Date | Notes |
+| --- | --- | --- |
+| PyQt5-WinARM64 5.15.11.post1, PyQt5-sip-WinARM64 12.17.0 | 2026-10-10 | Qt 5.15.19 runtime and ARM64 MSVC runtime bundled; SIP wheels for CPython 3.13 and 3.14 |
+| PyQt5-WinARM64 5.15.11, PyQt5-sip-WinARM64 12.15.0 | 2026-10-05 | **Yanked.** Missing Qt runtime; see [Known issues](#known-issues-in-51511) |
 
 ## Distribution names
 

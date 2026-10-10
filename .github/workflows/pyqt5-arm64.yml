@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths-ignore:
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-smoke-test.yml"
+      - ".github/release-notes/**"
+      - "README.md"
   pull_request:
   workflow_dispatch:
     inputs:

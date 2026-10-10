@@ -61,7 +61,20 @@ jobs:
           & $py -m pip install --upgrade pip
           $version = $env:RELEASE_TAG.TrimStart("v")
           if ($env:FROM_PYPI -eq "true") {
-            & $py -m pip install --no-cache-dir --only-binary=:all: "PyQt5-WinARM64==$version"
+            # PyPI's CDN can serve a stale index for a few minutes after an
+            # upload ("from versions: none"), so retry before failing.
+            $installed = $false
+            for ($attempt = 1; $attempt -le 6 -and -not $installed; $attempt++) {
+              $PSNativeCommandUseErrorActionPreference = $false
+              & $py -m pip install --no-cache-dir --only-binary=:all: "PyQt5-WinARM64==$version"
+              $installed = ($LASTEXITCODE -eq 0)
+              $PSNativeCommandUseErrorActionPreference = $true
+              if (-not $installed -and $attempt -lt 6) {
+                Write-Host "PyQt5-WinARM64==$version not installable yet (attempt $attempt); retrying in 30s"
+                Start-Sleep -Seconds 30
+              }
+            }
+            if (-not $installed) { throw "Could not install PyQt5-WinARM64==$version from PyPI" }
           } else {
             New-Item -ItemType Directory -Force -Path release-wheels | Out-Null
             gh release download "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" `
