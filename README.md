@@ -1,4 +1,6 @@
 # PyQt5-WinARM64
+![PyPI - Downloads](https://shields.io)
+
 
 Native Windows ARM64 builds of PyQt5.
 
