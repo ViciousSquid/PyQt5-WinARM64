@@ -489,7 +489,18 @@ jobs:
             "--new-version", $env:PYQT5_DIST_VERSION,
             "--drop-build-tag",
             "--output-dir", "dist",
-            "--replace-requires", "PyQt5-sip", "PyQt5-sip-WinARM64"
+            "--replace-requires", "PyQt5-sip", "PyQt5-sip-WinARM64",
+            # The retagged wheel inherits upstream PyQt5 METADATA: Riverbank
+            # author, upstream links, upstream README and Requires-Python
+            # >=3.8. Replace it with this project's own metadata so the PyPI
+            # page describes the WinARM64 build and links back here.
+            "--set-requires-python", ">=3.9",
+            "--set-summary", "Native Windows ARM64 wheels for PyQt5 (unofficial)",
+            "--set-author-email", "Vicious Squid <161540961+ViciousSquid@users.noreply.github.com>",
+            "--description-file", "README.md",
+            "--project-url", "Source", "https://github.com/ViciousSquid/PyQt5-WinARM64",
+            "--project-url", "Bug Tracker", "https://github.com/ViciousSquid/PyQt5-WinARM64/issues",
+            "--project-url", "Release Notes", "https://github.com/ViciousSquid/PyQt5-WinARM64/releases"
           )
           foreach ($dll in Get-ChildItem msvc-runtime -Filter "*.dll") {
             $retag += @("--add-file", $dll.FullName, "PyQt5/Qt5/bin/$($dll.Name)")
