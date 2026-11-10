@@ -6,6 +6,11 @@ Requires-Dist entries, can add extra files, and always regenerates RECORD so
 the result is a valid wheel. The version is read from METADATA rather than
 parsed out of directory names, and the .dist-info directory is always named
 from the normalized name and version so pip can read it back.
+
+Selected METADATA headers (Requires-Python, Summary, Author-email) can be
+replaced, Project-URL entries rewritten and the long description replaced
+from a file, so a retagged distribution presents its own metadata instead
+of upstream's.
 """
 
 from __future__ import annotations
@@ -45,6 +50,66 @@ def split_wheel_filename(name: str) -> tuple[str, str, str | None, str]:
     return distribution, version, build, f"{py}-{abi}-{plat}"
 
 
+def apply_metadata_overrides(
+    metadata: str,
+    requires_python: str | None = None,
+    summary: str | None = None,
+    author_email: str | None = None,
+    description_file: Path | None = None,
+    project_urls: list[tuple[str, str]] | None = None,
+) -> str:
+    """Replace selected METADATA headers and the long description.
+
+    Header overrides only ever replace an existing header, never invent
+    one: a requested override whose key is absent from the source metadata
+    is an error, so an unexpected upstream METADATA layout cannot pass
+    silently. Project-URL entries are the exception: existing entries are
+    dropped so stale upstream links do not outlive the retag.
+    """
+    lines = metadata.splitlines(keepends=True)
+    blank = next((i for i, line in enumerate(lines) if not line.strip()), len(lines))
+    headers, body = lines[:blank], lines[blank:]
+
+    replacements = {
+        "Requires-Python": requires_python,
+        "Summary": summary,
+        "Author-email": author_email,
+    }
+    rewritten: list[str] = []
+    for line in headers:
+        override = next(
+            (
+                key
+                for key, value in replacements.items()
+                if value is not None and re.match(rf"(?i)^{re.escape(key)}:[ \t]", line)
+            ),
+            None,
+        )
+        if override is None:
+            if project_urls is not None and re.match(r"(?i)^Project-URL:[ \t]", line):
+                continue
+            rewritten.append(line)
+        else:
+            newline = "\r\n" if line.endswith("\r\n") else "\n"
+            rewritten.append(f"{override}: {replacements[override]}{newline}")
+            replacements[override] = None
+
+    for key, value in replacements.items():
+        if value is not None:
+            raise ValueError(f"wheel metadata does not declare a {key} header; cannot override it")
+
+    if project_urls is not None:
+        rewritten.extend(f"Project-URL: {label}, {url}\n" for label, url in project_urls)
+
+    headers_text = "".join(rewritten)
+    if description_file is None:
+        return headers_text + "".join(body)
+    text = description_file.read_text(encoding="utf-8")
+    if not text.endswith("\n"):
+        text += "\n"
+    return headers_text + "\n" + text
+
+
 def rewrite_wheel(
     path: Path,
     old_name: str,
@@ -54,6 +119,11 @@ def rewrite_wheel(
     drop_build_tag: bool = False,
     added_files: list[tuple[Path, str]] | None = None,
     output_dir: Path | None = None,
+    requires_python: str | None = None,
+    summary: str | None = None,
+    author_email: str | None = None,
+    description_file: Path | None = None,
+    project_urls: list[tuple[str, str]] | None = None,
 ) -> Path:
     distribution, file_version, build_tag, tags = split_wheel_filename(path.name)
     if normalize_wheel_name(distribution) != normalize_wheel_name(old_name):
@@ -95,6 +165,15 @@ def rewrite_wheel(
             return match.group(0)
 
         metadata = requirement_pattern.sub(replace_requirement, metadata)
+
+    metadata = apply_metadata_overrides(
+        metadata,
+        requires_python=requires_python,
+        summary=summary,
+        author_email=author_email,
+        description_file=description_file,
+        project_urls=project_urls,
+    )
 
     new_dist_info = f"{normalize_wheel_name(new_name)}-{version}.dist-info"
     record_name = new_dist_info + "/RECORD"
@@ -190,6 +269,22 @@ def main() -> None:
         default=[],
         help="add a file to the wheel at the given archive path",
     )
+    parser.add_argument("--set-requires-python", help="replace the Requires-Python header")
+    parser.add_argument("--set-summary", help="replace the Summary header")
+    parser.add_argument("--set-author-email", help="replace the Author-email header")
+    parser.add_argument(
+        "--description-file",
+        type=Path,
+        help="replace the long description with this file's contents",
+    )
+    parser.add_argument(
+        "--project-url",
+        action="append",
+        nargs=2,
+        metavar=("LABEL", "URL"),
+        default=[],
+        help="replace the Project-URL entries with LABEL, URL (repeatable)",
+    )
     args = parser.parse_args()
 
     result = rewrite_wheel(
@@ -201,6 +296,11 @@ def main() -> None:
         drop_build_tag=args.drop_build_tag,
         added_files=[(Path(source), arcname) for source, arcname in args.add_file],
         output_dir=args.output_dir,
+        requires_python=args.set_requires_python,
+        summary=args.set_summary,
+        author_email=args.set_author_email,
+        description_file=args.description_file,
+        project_urls=[(label, url) for label, url in args.project_url] or None,
     )
     print(result)
 
