@@ -5,8 +5,17 @@ on:
     branches: [main]
     paths-ignore:
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-smoke-test.yml"
+      - ".github/release-notes/**"
+      - "README.md"
+      - "LICENSE"
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Keep the Qt ARM64 cache warm: pyqt5-arm64.yml restores this build with
+    # fail-on-cache-miss: true and GitHub evicts caches unused for ~7 days.
+    # On a cache hit the build/install steps are skipped, so this run is quick.
+    - cron: "0 3 * * 1"
 
 env:
   QT_VERSION: "5.15.19"
